@@ -4,13 +4,14 @@ import (
     "fmt"
 	"time"
     "net/http"
+    "io"
 	"io/ioutil"
 	"encoding/json"
 	"strconv"
 	"net/url"
 	"strings"
     "github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 func init() {
@@ -48,7 +49,7 @@ type Team struct {
 	TeamID int64
 	Name string
     ParentID int64
-	Projects []Project
+//	Projects []Project
 }
 
 type Preset struct {
@@ -80,43 +81,100 @@ type Scan struct {
 	FinishTime time.Time
 }
 
-func (c SASTclient) getV( api string, version string ) (string, error) {
-	url := c.baseUrl + api
-	log.Trace( "Attempting to fetch " + url )
 
-	sast_req, err := http.NewRequest("GET", url, nil)
-	sast_req.Header.Add( "Authorization", "Bearer " + c.authToken )
-	sast_req.Header.Add( "Accept", "application/json;" + version )
+func (c *SASTclient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
+	request, err := http.NewRequest(method, url, body)
 	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
-		return "", err
+		return &http.Request{}, err
 	}
 
-	
-	res, err := c.httpClient.Do( sast_req );
-	defer res.Body.Close()
-
-	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
-		return "", err
-	}
-
-	resBody,err := ioutil.ReadAll( res.Body )
-
-	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
-		return "", err
+	if header != nil {
+		for name, headers := range *header {
+			for _, h := range headers {
+				request.Header.Add(name, h)
+			}
+		}
 	}
 
 
-	return string(resBody), nil
+    header.Set( "Authorization", "Bearer " + c.authToken )
+    if header.Get("User-Agent") == "" {
+        header.Set( "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0" )
+    }
+
+	return request, nil
 }
+
+func (c *SASTclient) sendRequestInternal(method, url string, body io.Reader, header http.Header) ([]byte, error) {
+    var bodyBytes []byte
+
+    if body != nil {
+        closer := ioutil.NopCloser(body)
+        bodyBytes, _ = ioutil.ReadAll(closer)
+        defer closer.Close()
+    }
+
+    request, err := c.createRequest( method, url, body, &header, nil )
+    if err != nil {
+        c.logger.Errorf("Unable to create request: %s", err )
+        return []byte{}, err
+    }
+
+
+    response, err := c.httpClient.Do(request)
+    defer response.Body.Close()
+    if err != nil {
+        resBody,err := ioutil.ReadAll( response.Body )
+        c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
+        c.logger.Errorf("HTTP request failed with error: %s", err)
+        return []byte{}, err
+    }
+
+    resBody,err := ioutil.ReadAll( response.Body )
+
+	if err != nil {
+		c.logger.Error( "Error reading response body: %s", err )
+		return []byte{}, err
+	}
+
+
+    return resBody, nil
+}
+
+func (c *SASTclient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
+    sasturl := fmt.Sprintf("%v/cxrestapi%v", c.baseUrl, url)
+    return c.sendRequestInternal(method, sasturl, body, header )
+}
+
+func (c *SASTclient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte ) {
+    if len(requestBody) != 0 {
+        c.logger.Errorf("Request body: %s", string(requestBody) )
+    }
+    if len(responseBody) != 0 {
+        c.logger.Errorf("Response body: %s", string(responseBody))
+    }
+}
+
+
+// convenience function
+func (c *SASTclient) getV( api string, version string ) ([]byte, error) {
+    header := http.Header{}
+    header.Add( "Accept", "application/json;version=" + version )
+
+	return c.sendRequest( http.MethodGet, api, nil, header )
+}
+
+
+func (c *SASTclient) get( api string ) ([]byte,error) {
+	return c.getV( api, "1.0" )
+}
+
 
 func (s Scan) ToString() string {
 	return "Scan ID: " + strconv.FormatInt( s.ScanID, 10 ) + ", Project ID: " + strconv.FormatInt( s.ProjectID, 10 ) + ", Status: " + s.Status + ", Time: " + s.FinishTime.Format(time.RFC3339)
 }
 
-func getUserToken( base_url string, username string, password string ) (string, error) {
+func getUserToken( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (string, error) {
 	data := url.Values{}
 	data.Set( "username", username )
 	data.Set( "password", password )
@@ -128,18 +186,17 @@ func getUserToken( base_url string, username string, password string ) (string, 
 	sast_req, err := http.NewRequest("POST", base_url + "/cxrestapi/auth/identity/connect/token", strings.NewReader( data.Encode() ))
 	
 	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
+		logger.Errorf( "Error: %s", err.Error() )
 		return "", err
 	}
 
 	sast_req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{}
 	res, err := client.Do( sast_req );
 	
 
 	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
+		logger.Errorf( "Error: %s", err.Error() )
 		return "", err
 	}
 	defer res.Body.Close()
@@ -147,33 +204,31 @@ func getUserToken( base_url string, username string, password string ) (string, 
 	resBody,err := ioutil.ReadAll( res.Body )
 
 	if err != nil {
-		fmt.Printf( "Error: " + err.Error() )
+		logger.Errorf( "Error: %s", err.Error() )
 		return "", err
 	}
-
-	//log.Trace( "Response: " + string(resBody) )
 
 	var jsonBody map[string]interface{}
 
 	err = json.Unmarshal( resBody, &jsonBody)
 
-	if err == nil {
-		token := jsonBody["access_token"].(string)
-		return token, nil
-	}
+	if err != nil {
+        logger.Errorf( "Error: Login failed: %s", err.Error() )
+	    return "", err
+    }
 
-	log.Error( "Error: Login failed: " + err.Error() )
-	return "", err
-}
-
-func (c SASTclient) get( api string ) (string,error) {
-	return c.getV( api, "v=1.0" )
+    token := jsonBody["access_token"].(string)
+    return token, nil
 }
 
 func (c *SASTclient) GetProject ( id int64 ) (Project, error) {
     projects, err := c.GetProjects()
     
-	for _, p := range c.Projects {
+    if err != nil {
+        return Project{}, err
+    }
+
+	for _, p := range projects {
 		if p.ProjectID == id {
 			return p, nil
 		}
@@ -182,39 +237,32 @@ func (c *SASTclient) GetProject ( id int64 ) (Project, error) {
 }
 
 func (c *SASTclient) GetProjects () ([]Project, error) {
-	if len( c.Projects ) == 0 {
-        response, err := c.get( "/cxrestapi/projects" )
-        if err != nil {
-            return c.Projects, err
-        }
-		c.Projects, err = parseProjects( response )
-        return c.Projects, err
-	}
-	return c.Projects, nil
+    response, err := c.get( "/cxrestapi/projects" )
+    if err != nil {
+        return []Project{},  err
+    }
+    return c.parseProjects( response )
+
 }
 
 func (c *SASTclient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
-	if len( c.Projects ) == 0 {
-        response, err := c.get( "/cxrestapi/projects?teamId=" + strconv.FormatInt( teamid, 10 ) )
-        if err != nil {
-            return c.Projects, err
-        }
 
-		c.Projects, err = parseProjects( response	)
-        return c.Projects, err
-	}
-	return c.Projects, nil
+    response, err := c.get( "/cxrestapi/projects?teamId=" + strconv.FormatInt( teamid, 10 ) )
+    if err != nil {
+        return []Project{}, err
+    }
+    return c.parseProjects( response )
 }
 
 
 func (c *SASTclient) GetScan( scanid int64 ) (Scan,error) {
-	log.Debug( "Get scan " + strconv.FormatInt( scanid, 10 ))
+	c.logger.Debug( "Get scan " + strconv.FormatInt( scanid, 10 ))
     response, err := c.get( "/cxrestapi/sast/scans/" + strconv.FormatInt( scanid, 10 ) )
     if err != nil {
         return Scan{}, err
     }
 
-    return parseScan( response )
+    return c.parseScan( response )
 }
 
 func (c *SASTclient) GetLastScan ( projectid int64 ) (Scan, error) {
@@ -224,14 +272,14 @@ func (c *SASTclient) GetLastScan ( projectid int64 ) (Scan, error) {
         return scan, err
     }
 
-	scans,err := parseScans( response )
+	scans,err := c.parseScans( response )
 	if err != nil {
 		return scan, err
 	}
 	return scans[0], nil
 }
 
-func parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
+func (c *SASTclient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
 	var scan Scan
 
 	scan.ScanID = int64( (*single_scan)["id"].(float64))
@@ -247,58 +295,58 @@ func parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error)
 	var err error
 	scan.FinishTime, err = time.Parse(time.RFC3339, dnt.(map[string]interface{})["finishedOn"].(string) + "Z" )
 	if err != nil {
-		log.Error( "Error parsing date/time: " + err.Error() )		
+		c.logger.Error( "Error parsing date/time: " + err.Error() )		
 	}
 
 	return scan, err
 }
 
-func parseScan( input string ) (Scan, error) {
+func (c *SASTclient) parseScan( input []byte ) (Scan, error) {
     var scan Scan
-	log.Trace( "Parsing single scan from: " + input )
+	c.logger.Trace( "Parsing single scan from: " + string(input) )
 	var single_scan map[string]interface{}
-	err := json.Unmarshal( []byte( input ), &single_scan )
+	err := json.Unmarshal( input, &single_scan )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
-		log.Error( "Input was: " + input )
+		c.logger.Error("Error: " + err.Error() )
+		c.logger.Error( "Input was: " + string(input) )
 		return scan, err
 	} else {		
-		return parseScanFromInterface( &single_scan )
+		return c.parseScanFromInterface( &single_scan )
 	}
 }
 
-func parseScans( input string ) ([]Scan, error) {
-	log.Trace( "Parsing scans from: " + input )
+func (c *SASTclient) parseScans( input []byte ) ([]Scan, error) {
+	c.logger.Trace( "Parsing scans from: " + string(input) )
 
 	var scans []map[string]interface{}
 
 	var scanList []Scan
 
-	err := json.Unmarshal( []byte( input ), &scans )
+	err := json.Unmarshal( input, &scans )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
-		log.Error( "Input was: " + input )
+		c.logger.Error("Error: " + err.Error() )
+		c.logger.Error( "Input was: " + string(input) )
         return scanList, err
 	} else {
 		scanList = make([]Scan, len(scans) )
 		//id := 0
 		for id, scan := range scans {
-			scanList[id], err = parseScanFromInterface( &scan )
+			scanList[id], err = c.parseScanFromInterface( &scan )
 		}
 	}
 
 	return scanList, nil
 }
 
-func parseProjects( input string ) ([]Project, error) {
+func (c *SASTclient) parseProjects( input []byte ) ([]Project, error) {
 	var projects []interface{}
 
 	var projectList []Project
 
-	log.Trace( "Parsing projects from: " + input )
-	err := json.Unmarshal( []byte( input ), &projects )
+	c.logger.Trace( "Parsing projects from: " + string(input) )
+	err := json.Unmarshal( input, &projects )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
+		c.logger.Error("Error: " + err.Error() )
         return projectList, err
 	} else {
 		projectList = make([]Project, len(projects) )
@@ -312,44 +360,42 @@ func parseProjects( input string ) ([]Project, error) {
 	return projectList, nil
 }
 
+/*
 func (t Team) HasProjects() bool {
 	return len(t.Projects) > 0
 }
+*/
 
-func (c SASTclient) matchTeamProjects() {
+/*
+func (c *SASTclient) matchTeamProjects() {
 	for index := range c.Teams {
-		log.Trace( "Looking for projects belonging to team " + c.Teams[index].Name )
+		c.logger.Trace( "Looking for projects belonging to team " + c.Teams[index].Name )
 		for _, project := range c.Projects {
 			if c.Teams[index].TeamID == project.TeamID {
 				c.Teams[index].Projects = append( c.Teams[index].Projects, project )
 			}
 		}
 	}
-}
+} */
 
 func (c *SASTclient) GetTeams () ([]Team, error) {
-	if len( c.Teams ) == 0 {
-        response, err := c.get( "/cxrestapi/auth/teams" )
-        if err != nil {
-            return c.Teams, err
-        }
+    response, err := c.get( "/cxrestapi/auth/teams" )
+    if err != nil {
+        return []Team{}, err
+    }
 
-		c.Teams, err = parseTeams( response	)
-        return c.Teams, err
-	}
-
-	return c.Teams, nil
+    return c.parseTeams( response )
 }
 
-func parseTeams( input string ) ([]Team, error) {
+func (c *SASTclient) parseTeams( input []byte ) ([]Team, error) {
 	var teams []interface{}
 
 	var teamList []Team
 
-	log.Trace( "Parsing teams from input: " + input )
-	err := json.Unmarshal( []byte( input ), &teams )
+	c.logger.Trace( "Parsing teams from input: " + string(input) )
+	err := json.Unmarshal( input, &teams )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
+		c.logger.Error("Error: " + err.Error() )
         return teamList, err
 	} else {
 		teamList = make([]Team, len(teams) )
@@ -364,20 +410,14 @@ func parseTeams( input string ) ([]Team, error) {
 }
 
 func (c *SASTclient) GetUsers () ([]User, error) {
-	if len( c.Users ) == 0 {
-        response, err := c.get( "/cxrestapi/auth/users" )
-        if err != nil {
-            return c.Users, err
-        }
-
-		c.Users, err = parseUsers( response)
-        return c.Users, err
-	}
-
-	return c.Users, nil
+    response, err := c.get( "/cxrestapi/auth/users" )
+    if err != nil {
+        return []User{}, err
+    }
+    return c.parseUsers( response )
 }
 
-func parseUserFromInterface( single_user *map[string]interface{} ) User {
+func (c *SASTclient) parseUserFromInterface( single_user *map[string]interface{} ) User {
 	user := User{}
 	user.UserID = int64( (*single_user)["id"].(float64) )
 	user.FirstName = (*single_user)["firstName"].(string)
@@ -386,71 +426,71 @@ func parseUserFromInterface( single_user *map[string]interface{} ) User {
 	return user
 }
 
-func parseUsers( input string ) ([]User, error) {
+func (c *SASTclient) parseUsers( input []byte ) ([]User, error) {
 	var users []map[string]interface{}
 	var userList []User
 
-	log.Trace( "Parsing users from input: " + input )
-	err := json.Unmarshal( []byte( input ), &users )
+	c.logger.Trace( "Parsing users from input: " + string(input) )
+	err := json.Unmarshal( input, &users )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
+		c.logger.Error("Error: " + err.Error() )
         return userList, err
 	} else {
 		userList = make([]User, len(users) )
 		for id := range users {
-			userList[id] = parseUserFromInterface( &(users[id]) )
+			userList[id] = c.parseUserFromInterface( &(users[id]) )
 		}
 	}
 
 	return userList, nil
 }
 
-func (c *SASTclient) getUserInfo () error {
-	log.Trace( "SAST Get User Info" )
+
+func (c *SASTclient) getUserInfo () (User, error) {
+	c.logger.Trace( "SAST Get User Info" )
 	response, err := c.get( "/cxrestapi/auth/MyProfile" )
     if err != nil {
-        return err
+        return User{}, err
     }
 
 	var jsonBody map[string]interface{}
 
 	err = json.Unmarshal( []byte(response), &jsonBody)
 
-    log.Warning( "Parsing input: " + response )
+    //c.logger.Warning( "Parsing input: " + strig(response) )
 	if err == nil {
-		c.UserInfo = &User {
+		return User {
 			int64(jsonBody["id"].(float64)),
 			jsonBody["firstName"].(string),
 			jsonBody["lastName"].(string),
             jsonBody["userName"].(string),
-		}
-        return nil
+		}, nil
 	} else {
-		log.Error( "Login failed: " + err.Error() )
-        return err
+		c.logger.Error( "Login failed: " + err.Error() )
+        return User{}, err
 	}
 }
 
-func parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
+func (c *SASTclient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
 	preset := Preset{}
 	preset.PresetID = int64( (*single_preset)["id"].(float64) )
 	preset.Name = (*single_preset)["name"].(string)
 	return preset
 }
 
-func parsePresets( input string ) ([]Preset, error) {
+func (c *SASTclient) parsePresets( input []byte ) ([]Preset, error) {
 	var presets []map[string]interface{}
 	var presetList []Preset
 
-	log.Trace( "Parsing presets from input: " + input )
-	err := json.Unmarshal( []byte( input ), &presets )
+	c.logger.Trace( "Parsing presets from input: " + string(input) )
+	err := json.Unmarshal( input, &presets )
 	if err != nil {
-		log.Error("Error: " + err.Error() )
+		c.logger.Error("Error: " + err.Error() )
         return presetList, err
 	} else {
 		presetList = make([]Preset, len(presets) )
 		for id := range presets {
-			presetList[id] = parsePresetFromInterface( &(presets[id]) )
+			presetList[id] = c.parsePresetFromInterface( &(presets[id]) )
 		}
 	}
 
@@ -458,28 +498,23 @@ func parsePresets( input string ) ([]Preset, error) {
 }
 
 func (c *SASTclient) GetPresets () ([]Preset, error) {
-	if len( c.Presets ) == 0 {
-        response, err := c.get( "/cxrestapi/sast/presets" )
-        if err != nil {
-            return c.Presets, err
-        }
-
-		c.Presets, err = parsePresets( response )
-        return c.Presets, err
-	}
-
-	return c.Presets, nil
+    response, err := c.get( "/cxrestapi/sast/presets" )
+    if err != nil {
+        return []Preset{}, err
+    }
+    return c.parsePresets( response )
 }
 
 /* no rest endpoint for this?
 func (c *SASTclient) GetQueries () *[]Query {
 	if len( c.Queries ) == 0 {
-		//c.Queries = parseQueries( c.get( "/cxrestapi/" )	)
+		//c.Queries = c.parseQueries( c.get( "/cxrestapi/" )	)
 	}
 
 	return &c.Queries
 }*/
 
+/*
 func (c *SASTclient) PresetSummary() string {
 
 	return strconv.Itoa( len( c.Presets ) ) + " presets"
@@ -502,7 +537,7 @@ func (c *SASTclient) TeamTree() string {
 func (c *SASTclient) ProjectSummary() string {
 	
 	return strconv.Itoa( len( c.Projects ) ) + " projects"
-}
+} */
 
 func (c *SASTclient) ToString() string {
 	return c.baseUrl + " with token: " + c.authToken[:4] + "..." + c.authToken[ len(c.authToken) - 4:]
@@ -512,19 +547,19 @@ func (c *SASTclient) GetToken() string {
     return c.authToken
 }
 
-func New( base_url string, token string ) *SASTclient {
-	cli := &SASTclient{ &http.Client{}, token, base_url, nil, nil, nil, nil, nil, nil, nil }
+func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTclient {
+	cli := &SASTclient{ client, token, base_url, logger }
 //	cli.getUserInfo()
 //	cli.RefreshCache()
 	return cli
 }
 
-func NewTokenClient( base_url string, username string, password string ) (*SASTclient, error) {
-	token, err := getUserToken( base_url, username, password )
+func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTclient, error) {
+	token, err := getUserToken( client, base_url, username, password, logger )
     if err != nil {
-        log.Fatal( "Error initializing SAST client: " + err.Error() )
+        logger.Fatal( "Error initializing SAST client: " + err.Error() )
         return nil, err
     }
 
-	return New( base_url, token )
+	return New( client, base_url, token, logger ), nil
 }
