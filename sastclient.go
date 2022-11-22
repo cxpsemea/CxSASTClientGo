@@ -89,18 +89,15 @@ func (c *SASTClient) createRequest(method, url string, body io.Reader, header *h
 		return &http.Request{}, err
 	}
 
-	if header != nil {
-		for name, headers := range *header {
-			for _, h := range headers {
-				request.Header.Add(name, h)
-			}
+	for name, headers := range *header {
+		for _, h := range headers {
+			request.Header.Add(name, h)
 		}
 	}
 
-
-    header.Set( "Authorization", "Bearer " + c.authToken )
-    if header.Get("User-Agent") == "" {
-        header.Set( "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0" )
+    request.Header.Set( "Authorization", "Bearer " + c.authToken )
+    if request.Header.Get("User-Agent") == "" {
+        request.Header.Set( "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0" )
     }
 
 	return request, nil
@@ -114,8 +111,6 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
         bodyBytes, _ = ioutil.ReadAll(closer)
         defer closer.Close()
     }
-
-    header.Set( "Authorization", "Bearer " + c.authToken )
 
     request, err := c.createRequest( method, url, body, &header, nil )
     if err != nil {
