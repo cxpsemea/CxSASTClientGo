@@ -19,7 +19,15 @@ type SASTCache struct {
 
 
 
-
+func (c *SASTCache) matchTeamProjects() {
+	for index := range c.Teams {
+		for _, project := range c.Projects {
+			if c.Teams[index].TeamID == project.TeamID {
+				c.Teams[index].Projects = append( c.Teams[index].Projects, project )
+			}
+		}
+	}
+}
 
 func (c *SASTCache) Refresh( client *SASTClient ) error {
     var err error
@@ -42,6 +50,8 @@ func (c *SASTCache) Refresh( client *SASTClient ) error {
     if err != nil {
         return err
     }
+
+    c.matchTeamProjects()
 
     return nil
 }

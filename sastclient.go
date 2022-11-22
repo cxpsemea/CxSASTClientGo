@@ -50,7 +50,7 @@ type Team struct {
 	TeamID int64
 	Name string
     ParentID int64
-//	Projects []Project
+	Projects []Project
 }
 
 type Preset struct {
@@ -363,23 +363,11 @@ func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
 	return projectList, nil
 }
 
-/*
+
 func (t Team) HasProjects() bool {
 	return len(t.Projects) > 0
 }
-*/
 
-/*
-func (c *SASTClient) matchTeamProjects() {
-	for index := range c.Teams {
-		c.logger.Trace( "Looking for projects belonging to team " + c.Teams[index].Name )
-		for _, project := range c.Projects {
-			if c.Teams[index].TeamID == project.TeamID {
-				c.Teams[index].Projects = append( c.Teams[index].Projects, project )
-			}
-		}
-	}
-} */
 
 func (c *SASTClient) GetTeams () ([]Team, error) {
     response, err := c.get( "/auth/teams" )
