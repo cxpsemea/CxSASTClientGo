@@ -25,12 +25,13 @@ type User struct {
     UserName string
 }
 
-type SASTclient struct {
+
+type SASTClient struct {
 	httpClient *http.Client
 	authToken string
 	baseUrl string
     logger *logrus.Logger
-//	UserInfo *User
+	CurrentUser *User
 /*	Projects []Project
 	Teams []Team
 	Users []User
@@ -82,7 +83,7 @@ type Scan struct {
 }
 
 
-func (c *SASTclient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
+func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
 	request, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return &http.Request{}, err
@@ -105,14 +106,16 @@ func (c *SASTclient) createRequest(method, url string, body io.Reader, header *h
 	return request, nil
 }
 
-func (c *SASTclient) sendRequestInternal(method, url string, body io.Reader, header http.Header) ([]byte, error) {
+func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, header http.Header) ([]byte, error) {
     var bodyBytes []byte
-
+    c.logger.Debugf( "Sending request to URL %v", url )
     if body != nil {
         closer := ioutil.NopCloser(body)
         bodyBytes, _ = ioutil.ReadAll(closer)
         defer closer.Close()
     }
+
+    header.Set( "Authorization", "Bearer " + c.authToken )
 
     request, err := c.createRequest( method, url, body, &header, nil )
     if err != nil {
@@ -130,7 +133,7 @@ func (c *SASTclient) sendRequestInternal(method, url string, body io.Reader, hea
         return []byte{}, err
     }
 
-    resBody,err := ioutil.ReadAll( response.Body )
+    resBody, err := ioutil.ReadAll( response.Body )
 
 	if err != nil {
 		c.logger.Error( "Error reading response body: %s", err )
@@ -141,12 +144,12 @@ func (c *SASTclient) sendRequestInternal(method, url string, body io.Reader, hea
     return resBody, nil
 }
 
-func (c *SASTclient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
+func (c *SASTClient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
     sasturl := fmt.Sprintf("%v/cxrestapi%v", c.baseUrl, url)
     return c.sendRequestInternal(method, sasturl, body, header )
 }
 
-func (c *SASTclient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte ) {
+func (c *SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte ) {
     if len(requestBody) != 0 {
         c.logger.Errorf("Request body: %s", string(requestBody) )
     }
@@ -157,7 +160,7 @@ func (c *SASTclient) recordRequestDetailsInErrorCase(requestBody []byte, respons
 
 
 // convenience function
-func (c *SASTclient) getV( api string, version string ) ([]byte, error) {
+func (c *SASTClient) getV( api string, version string ) ([]byte, error) {
     header := http.Header{}
     header.Add( "Accept", "application/json;version=" + version )
 
@@ -165,7 +168,7 @@ func (c *SASTclient) getV( api string, version string ) ([]byte, error) {
 }
 
 
-func (c *SASTclient) get( api string ) ([]byte,error) {
+func (c *SASTClient) get( api string ) ([]byte,error) {
 	return c.getV( api, "1.0" )
 }
 
@@ -221,7 +224,7 @@ func getUserToken( client *http.Client, base_url string, username string, passwo
     return token, nil
 }
 
-func (c *SASTclient) GetProject ( id int64 ) (Project, error) {
+func (c *SASTClient) GetProject ( id int64 ) (Project, error) {
     projects, err := c.GetProjects()
     
     if err != nil {
@@ -236,8 +239,8 @@ func (c *SASTclient) GetProject ( id int64 ) (Project, error) {
 	return Project{}, errors.New( "Project ID not found" )
 }
 
-func (c *SASTclient) GetProjects () ([]Project, error) {
-    response, err := c.get( "/cxrestapi/projects" )
+func (c *SASTClient) GetProjects () ([]Project, error) {
+    response, err := c.get( "/projects" )
     if err != nil {
         return []Project{},  err
     }
@@ -245,9 +248,9 @@ func (c *SASTclient) GetProjects () ([]Project, error) {
 
 }
 
-func (c *SASTclient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
+func (c *SASTClient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
 
-    response, err := c.get( "/cxrestapi/projects?teamId=" + strconv.FormatInt( teamid, 10 ) )
+    response, err := c.get( "/projects?teamId=" + strconv.FormatInt( teamid, 10 ) )
     if err != nil {
         return []Project{}, err
     }
@@ -255,9 +258,9 @@ func (c *SASTclient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
 }
 
 
-func (c *SASTclient) GetScan( scanid int64 ) (Scan,error) {
+func (c *SASTClient) GetScan( scanid int64 ) (Scan,error) {
 	c.logger.Debug( "Get scan " + strconv.FormatInt( scanid, 10 ))
-    response, err := c.get( "/cxrestapi/sast/scans/" + strconv.FormatInt( scanid, 10 ) )
+    response, err := c.get( "/sast/scans/" + strconv.FormatInt( scanid, 10 ) )
     if err != nil {
         return Scan{}, err
     }
@@ -265,9 +268,9 @@ func (c *SASTclient) GetScan( scanid int64 ) (Scan,error) {
     return c.parseScan( response )
 }
 
-func (c *SASTclient) GetLastScan ( projectid int64 ) (Scan, error) {
+func (c *SASTClient) GetLastScan ( projectid int64 ) (Scan, error) {
     var scan Scan
-    response, err := c.get( "/cxrestapi/sast/scans?projectId=" + strconv.FormatInt( projectid, 10 ) + "&scanStatus=Finished&last=1" )
+    response, err := c.get( "/sast/scans?projectId=" + strconv.FormatInt( projectid, 10 ) + "&scanStatus=Finished&last=1" )
     if err != nil {
         return scan, err
     }
@@ -279,7 +282,7 @@ func (c *SASTclient) GetLastScan ( projectid int64 ) (Scan, error) {
 	return scans[0], nil
 }
 
-func (c *SASTclient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
+func (c *SASTClient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
 	var scan Scan
 
 	scan.ScanID = int64( (*single_scan)["id"].(float64))
@@ -301,7 +304,7 @@ func (c *SASTclient) parseScanFromInterface( single_scan *map[string]interface{}
 	return scan, err
 }
 
-func (c *SASTclient) parseScan( input []byte ) (Scan, error) {
+func (c *SASTClient) parseScan( input []byte ) (Scan, error) {
     var scan Scan
 	c.logger.Trace( "Parsing single scan from: " + string(input) )
 	var single_scan map[string]interface{}
@@ -315,7 +318,7 @@ func (c *SASTclient) parseScan( input []byte ) (Scan, error) {
 	}
 }
 
-func (c *SASTclient) parseScans( input []byte ) ([]Scan, error) {
+func (c *SASTClient) parseScans( input []byte ) ([]Scan, error) {
 	c.logger.Trace( "Parsing scans from: " + string(input) )
 
 	var scans []map[string]interface{}
@@ -338,7 +341,7 @@ func (c *SASTclient) parseScans( input []byte ) ([]Scan, error) {
 	return scanList, nil
 }
 
-func (c *SASTclient) parseProjects( input []byte ) ([]Project, error) {
+func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
 	var projects []interface{}
 
 	var projectList []Project
@@ -367,7 +370,7 @@ func (t Team) HasProjects() bool {
 */
 
 /*
-func (c *SASTclient) matchTeamProjects() {
+func (c *SASTClient) matchTeamProjects() {
 	for index := range c.Teams {
 		c.logger.Trace( "Looking for projects belonging to team " + c.Teams[index].Name )
 		for _, project := range c.Projects {
@@ -378,8 +381,8 @@ func (c *SASTclient) matchTeamProjects() {
 	}
 } */
 
-func (c *SASTclient) GetTeams () ([]Team, error) {
-    response, err := c.get( "/cxrestapi/auth/teams" )
+func (c *SASTClient) GetTeams () ([]Team, error) {
+    response, err := c.get( "/auth/teams" )
     if err != nil {
         return []Team{}, err
     }
@@ -387,7 +390,7 @@ func (c *SASTclient) GetTeams () ([]Team, error) {
     return c.parseTeams( response )
 }
 
-func (c *SASTclient) parseTeams( input []byte ) ([]Team, error) {
+func (c *SASTClient) parseTeams( input []byte ) ([]Team, error) {
 	var teams []interface{}
 
 	var teamList []Team
@@ -409,15 +412,15 @@ func (c *SASTclient) parseTeams( input []byte ) ([]Team, error) {
 	return teamList, nil
 }
 
-func (c *SASTclient) GetUsers () ([]User, error) {
-    response, err := c.get( "/cxrestapi/auth/users" )
+func (c *SASTClient) GetUsers () ([]User, error) {
+    response, err := c.get( "/auth/users" )
     if err != nil {
         return []User{}, err
     }
     return c.parseUsers( response )
 }
 
-func (c *SASTclient) parseUserFromInterface( single_user *map[string]interface{} ) User {
+func (c *SASTClient) parseUserFromInterface( single_user *map[string]interface{} ) User {
 	user := User{}
 	user.UserID = int64( (*single_user)["id"].(float64) )
 	user.FirstName = (*single_user)["firstName"].(string)
@@ -426,7 +429,7 @@ func (c *SASTclient) parseUserFromInterface( single_user *map[string]interface{}
 	return user
 }
 
-func (c *SASTclient) parseUsers( input []byte ) ([]User, error) {
+func (c *SASTClient) parseUsers( input []byte ) ([]User, error) {
 	var users []map[string]interface{}
 	var userList []User
 
@@ -446,16 +449,16 @@ func (c *SASTclient) parseUsers( input []byte ) ([]User, error) {
 }
 
 
-func (c *SASTclient) getUserInfo () (User, error) {
+func (c *SASTClient) GetCurrentUser () (User, error) {
 	c.logger.Trace( "SAST Get User Info" )
-	response, err := c.get( "/cxrestapi/auth/MyProfile" )
+	response, err := c.get( "/auth/MyProfile" )
     if err != nil {
         return User{}, err
     }
 
 	var jsonBody map[string]interface{}
 
-	err = json.Unmarshal( []byte(response), &jsonBody)
+	err = json.Unmarshal( response, &jsonBody)
 
     //c.logger.Warning( "Parsing input: " + strig(response) )
 	if err == nil {
@@ -467,18 +470,19 @@ func (c *SASTclient) getUserInfo () (User, error) {
 		}, nil
 	} else {
 		c.logger.Error( "Login failed: " + err.Error() )
+        c.logger.Warning( "Failed while parsing response: " + string(response) )
         return User{}, err
 	}
 }
 
-func (c *SASTclient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
+func (c *SASTClient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
 	preset := Preset{}
 	preset.PresetID = int64( (*single_preset)["id"].(float64) )
 	preset.Name = (*single_preset)["name"].(string)
 	return preset
 }
 
-func (c *SASTclient) parsePresets( input []byte ) ([]Preset, error) {
+func (c *SASTClient) parsePresets( input []byte ) ([]Preset, error) {
 	var presets []map[string]interface{}
 	var presetList []Preset
 
@@ -497,8 +501,8 @@ func (c *SASTclient) parsePresets( input []byte ) ([]Preset, error) {
 	return presetList, nil
 }
 
-func (c *SASTclient) GetPresets () ([]Preset, error) {
-    response, err := c.get( "/cxrestapi/sast/presets" )
+func (c *SASTClient) GetPresets () ([]Preset, error) {
+    response, err := c.get( "/sast/presets" )
     if err != nil {
         return []Preset{}, err
     }
@@ -506,55 +510,37 @@ func (c *SASTclient) GetPresets () ([]Preset, error) {
 }
 
 /* no rest endpoint for this?
-func (c *SASTclient) GetQueries () *[]Query {
+func (c *SASTClient) GetQueries () *[]Query {
 	if len( c.Queries ) == 0 {
-		//c.Queries = c.parseQueries( c.get( "/cxrestapi/" )	)
+		//c.Queries = c.parseQueries( c.get( "/" )	)
 	}
 
 	return &c.Queries
 }*/
 
-/*
-func (c *SASTclient) PresetSummary() string {
 
-	return strconv.Itoa( len( c.Presets ) ) + " presets"
-}
-func (c *SASTclient) QuerySummary() string {
-	
-	return strconv.Itoa( len( c.Queries ) ) + " queries  in " + strconv.Itoa( len( c.QueryGroups ) ) + " groups"
-}
-func (c *SASTclient) UserSummary() string {
-	
-	return strconv.Itoa( len( c.Users ) ) + " users"
-}
-func (c *SASTclient) TeamSummary() string {
-	
-	return strconv.Itoa( len( c.Teams ) ) + " teams"
-}
-func (c *SASTclient) TeamTree() string {
-    return ""
-}
-func (c *SASTclient) ProjectSummary() string {
-	
-	return strconv.Itoa( len( c.Projects ) ) + " projects"
-} */
-
-func (c *SASTclient) ToString() string {
+func (c *SASTClient) ToString() string {
 	return c.baseUrl + " with token: " + c.authToken[:4] + "..." + c.authToken[ len(c.authToken) - 4:]
 }
 
-func (c *SASTclient) GetToken() string {
+func (c *SASTClient) GetToken() string {
     return c.authToken
 }
 
-func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTclient {
-	cli := &SASTclient{ client, token, base_url, logger }
-//	cli.getUserInfo()
+func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTClient {
+	cli := &SASTClient{ client, token, base_url, logger, nil }
+
+	user, err := cli.GetCurrentUser()
+    cli.CurrentUser = &user
+    if err != nil {
+        logger.Errorf( "Error while fetching current user information: %s", err )
+    }
+
 //	cli.RefreshCache()
 	return cli
 }
 
-func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTclient, error) {
+func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTClient, error) {
 	token, err := getUserToken( client, base_url, username, password, logger )
     if err != nil {
         logger.Fatal( "Error initializing SAST client: " + err.Error() )
