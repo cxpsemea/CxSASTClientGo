@@ -43,12 +43,6 @@ type SASTClient struct {
 	baseUrl string
     logger *logrus.Logger
 	CurrentUser *User
-/*	Projects []Project
-	Teams []Team
-	Users []User
-	Queries []Query
-	QueryGroups []QueryGroup // caching - to reconsider if needed
-	Presets []Preset */
 }
 
 type Project struct {
@@ -104,7 +98,23 @@ type ReportStatus struct {
 	Value string `json:"value"`
 }
 
-type Result struct {
+type Scan struct {
+	ScanID uint
+	ProjectID uint
+	Status string
+	FinishTime time.Time
+}
+
+type PathNode struct {
+    FileName    string
+    Line        uint
+    Column      uint
+    Name        string
+    Length      uint
+}
+
+
+type ScanResult struct {
     QueryName       string
     PathID          uint
     Line            uint
@@ -118,14 +128,25 @@ type Result struct {
     SimilarityID    int64
     SourceMethod    string
     DestinationMethod string
+    Nodes           []PathNode
 }
 
-type Scan struct {
-	ScanID uint
-	ProjectID uint
-	Status string
-	FinishTime time.Time
+type ScanResultStatusSummary struct {
+    ToVerify        uint
+    NotExploitable  uint
+    Confirmed       uint
+    ProposedNotExploitable uint
+    Urgent          uint
 }
+
+type ScanResultSummary struct {
+    High        ScanResultStatusSummary
+    Medium      ScanResultStatusSummary
+    Low         ScanResultStatusSummary
+    Information ScanResultStatusSummary
+}
+
+
 
 func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
 	request, err := http.NewRequest(method, url, body)
@@ -391,8 +412,8 @@ func (c *SASTClient) GenerateAndDownloadReport( scanID uint, reportType string )
 }
 
 
-func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error) {
-    results := make( []Result, 0 )
+func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]ScanResult, error) {
+    results := make( []ScanResult, 0 )
 /*
     Based on the Checkmarx step built into Project-Piper.io
 */
@@ -424,7 +445,7 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error
                 XMLName       xml.Name `xml:"Result"`
                 State         string   `xml:"state,attr"`
                 Status        string   `xml:"Status,attr"`
-                Filename      string    `xml:"Filename,attr"`
+                Filename      string    `xml:"FileName,attr"`
                 Line          uint      `xml:"Line,attr"`
                 Column        uint      `xml:"Column,attr"`
                 DeepLink      string    `xml:"DeepLink,attr"`
@@ -437,6 +458,7 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error
                     SourceMethod string `xml:"SourceMethod,attr"`
                     DestinationMethod string `xml:"DestinationMethod,attr"`
                     SimilarityID int64 `xml:"SimilarityId,attr"`
+                    Nodes    []PathNode `xml:"PathNode"`
                 } `xml:"Path"`
             } `xml:"Result"`
         }  `xml:"Query"`
@@ -451,22 +473,21 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error
         for _, result := range query.Results {
             
 
-            auditState := "ToVerify"
+            auditState := "TO_VERIFY"
             switch result.State {
             case "1":
-                auditState = "NotExploitable"
+                auditState = "NOT_EXPLOITABLE"
             case "2":
-                auditState = "Confirmed"
+                auditState = "CONFIRMED"
             case "3":
-                auditState = "Urgent"
+                auditState = "URGENT"
             case "4":
-                auditState = "ProposedNotExploitable"
-            case "0":
+                auditState = "PROPOSED_NOT_EXPLOITABLE"
             default:
-                auditState = "ToVerify"
+                auditState = "TO_VERIFY"
             }
 
-            results = append( results, Result{
+            results = append( results, ScanResult{
                 query.Name,
                 result.Path.PathID,
                 result.Line,
@@ -480,10 +501,67 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error
                 result.Path.SimilarityID,
                 result.Path.SourceMethod,
                 result.Path.DestinationMethod,
+                result.Path.Nodes,
             } )
         }
     }
     return results, nil
+}
+
+func (r ScanResult) String() string {
+    return fmt.Sprintf( "%v (%d) - %v to %v - in file %v:%d", r.QueryName, r.SimilarityID, r.Nodes[0].Name, r.Nodes[ len(r.Nodes)-1 ].Name, r.Filename, r.Line )
+}
+
+
+func addResultStatus( summary *ScanResultStatusSummary, result *ScanResult ) {
+    switch result.State {
+    case "CONFIRMED":
+        summary.Confirmed++
+    case "URGENT":
+        summary.Urgent++
+    case "PROPOSED_NOT_EXPLOITABLE":
+        summary.ProposedNotExploitable++
+    case "NOT_EXPLOITABLE":
+        summary.NotExploitable++
+    default:
+        summary.ToVerify++
+    }
+}
+
+func (c *SASTClient) GetScanResultSummary( results []ScanResult ) ScanResultSummary {
+    summary := ScanResultSummary{}
+
+    for _, result := range results {
+        switch result.Severity {
+        case "High":
+            addResultStatus(&(summary.High), &result)
+        case "Medium":
+            addResultStatus(&(summary.Medium), &result)
+        case "Low":
+            addResultStatus(&(summary.Low), &result)
+        default:
+            addResultStatus(&(summary.Information), &result)
+        }        
+    }
+
+    return summary
+}
+
+func (s ScanResultStatusSummary) Total() uint {
+    return s.ToVerify + s.Confirmed + s.Urgent + s.ProposedNotExploitable + s.NotExploitable
+}
+func (s ScanResultStatusSummary) String() string {
+    return fmt.Sprintf( "To Verify: %d, Confirmed: %d, Urgent: %d, Proposed NE: %d, NE: %d", s.ToVerify, s.Confirmed, s.Urgent, s.ProposedNotExploitable, s.NotExploitable )
+}
+func (s ScanResultSummary) String() string {
+    return fmt.Sprintf( "%v\n%v\n%v", fmt.Sprintf( "\tHigh: %v\n\tMedium: %v\n\tLow: %v\n\tInfo: %v", s.High.String(), s.Medium.String(), s.Low.String(), s.Information.String() ),
+            fmt.Sprintf( "\tTotal High: %d, Medium: %d, Low: %d, Info: %d", s.High.Total(), s.Medium.Total(), s.Low.Total(), s.Information.Total() ),
+            fmt.Sprintf( "\tTotal ToVerify: %d, Confirmed: %d, Urgent: %d, Proposed NE: %d, NE: %d", 
+                s.High.ToVerify + s.Medium.ToVerify + s.Low.ToVerify + s.Information.ToVerify,
+                s.High.Confirmed + s.Medium.Confirmed + s.Low.Confirmed + s.Information.Confirmed,
+                s.High.Urgent + s.Medium.Urgent + s.Low.Urgent + s.Information.Urgent,
+                s.High.ProposedNotExploitable + s.Medium.ProposedNotExploitable + s.Low.ProposedNotExploitable + s.Information.ProposedNotExploitable,
+                s.High.NotExploitable + s.Medium.NotExploitable + s.Low.NotExploitable + s.Information.NotExploitable ) )
 }
 
 func (c *SASTClient) GetScan( scanid uint ) (Scan,error) {
