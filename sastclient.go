@@ -2,6 +2,7 @@ package CxSASTClientGo
 
 import (
     "fmt"
+    "bytes"
 	"time"
     "net/http"
     "io"
@@ -25,6 +26,16 @@ type User struct {
     UserName string
 }
 
+
+type Links struct {
+	Report Link `json:"report"`
+	Status Link `json:"status"`
+}
+
+type Link struct {
+	Rel string `json:"rel"`
+	URI string `json:"uri"`
+}
 
 type SASTClient struct {
 	httpClient *http.Client
@@ -75,6 +86,24 @@ type QueryGroup struct {
 	OwningProjectID int64
 }
 
+type Report struct {
+	ReportID int   `json:"reportId"`
+	Links    Links `json:"links"`
+}
+
+// ReportStatusResponse - ReportStatusResponse Structure
+type ReportStatusResponse struct {
+	Location    string       `json:"location"`
+	ContentType string       `json:"contentType"`
+	Status      ReportStatus `json:"status"`
+}
+
+// ReportStatus - ReportStatus Structure
+type ReportStatus struct {
+	ID    int    `json:"id"`
+	Value string `json:"value"`
+}
+
 type Scan struct {
 	ScanID int64
 	ProjectID int64
@@ -112,7 +141,7 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
         defer closer.Close()
     }
 
-    request, err := c.createRequest( method, url, body, &header, nil )
+    request, err := c.createRequest( method, url, bytes.NewReader( bodyBytes ), &header, nil )
     if err != nil {
         c.logger.Errorf("Unable to create request: %s", err )
         return []byte{}, err
@@ -126,6 +155,12 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
         c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
         c.logger.Errorf("HTTP request failed with error: %s", err)
         return []byte{}, err
+    }
+    if response.StatusCode >= 400 {
+        resBody,_ := ioutil.ReadAll( response.Body )
+        c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
+        c.logger.Errorf("HTTP response indicates error: %v", response.Status )
+        return []byte{}, errors.New( "HTTP Response: " + response.Status )
     }
 
     resBody, err := ioutil.ReadAll( response.Body )
@@ -181,7 +216,7 @@ func getUserToken( client *http.Client, base_url string, username string, passwo
 	data.Set( "client_secret", "014DF517-39D1-4453-B7B3-9930C563627C" )
 	data.Set( "client_id", "resource_owner_client" )
 	
-	sast_req, err := http.NewRequest("POST", base_url + "/cxrestapi/auth/identity/connect/token", strings.NewReader( data.Encode() ))
+	sast_req, err := http.NewRequest(http.MethodPost, base_url + "/cxrestapi/auth/identity/connect/token", strings.NewReader( data.Encode() ))
 	
 	if err != nil {
 		logger.Errorf( "Error: %s", err.Error() )
@@ -252,6 +287,53 @@ func (c *SASTClient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
     return c.parseProjects( response )
 }
 
+func (c *SASTClient) RequestNewReport(scanID int, reportType string) (Report, error) {
+	report := Report{}
+	jsonData := map[string]interface{}{
+		"scanId":     scanID,
+		"reportType": reportType,
+		"comment":    "Scan report triggered by CxSASTClientGo",
+	}
+
+	jsonValue, _ := json.Marshal(jsonData)
+
+
+	header := http.Header{}
+	header.Set("cxOrigin", "GolangScript")
+	header.Set("Content-Type", "application/json")
+	data, err := c.sendRequest(http.MethodPost, "/reports/sastScan", bytes.NewReader(jsonValue), header)
+	if err != nil {
+		return report, errors.Wrapf(err, "Failed to trigger report generation for scan %v", scanID)
+	}
+
+	err = json.Unmarshal(data, &report)
+	return report, err
+}
+
+func (c *SASTClient) GetReportStatus(reportID int) (ReportStatusResponse, error) {
+	var response ReportStatusResponse
+
+	header := http.Header{}
+	header.Set("Accept", "application/json")
+	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%v/status", reportID), nil, header)
+	if err != nil {
+		c.logger.Errorf("Failed to fetch report status for reportID %v: %s", reportID, err)
+		return response, errors.Wrapf(err, "failed to fetch report status for reportID %v", reportID)
+	}
+
+	json.Unmarshal(data, &response)
+	return response, nil
+}
+
+func (c *SASTClient) DownloadReport(reportID int) ([]byte, error) {
+	header := http.Header{}
+	header.Set("Accept", "application/json")
+	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%v", reportID), nil, header)
+	if err != nil {
+		return []byte{}, errors.Wrapf(err, "failed to download report with reportID %v", reportID)
+	}
+	return data, nil
+}
 
 func (c *SASTClient) GetScan( scanid int64 ) (Scan,error) {
 	c.logger.Debug( "Get scan " + strconv.FormatInt( scanid, 10 ))
