@@ -8,7 +8,7 @@ import (
     "io"
 	"io/ioutil"
 	"encoding/json"
-	"strconv"
+    "encoding/xml"
 	"net/url"
 	"strings"
     "github.com/pkg/errors"
@@ -20,7 +20,7 @@ func init() {
 }
 
 type User struct {
-	UserID int64
+	UserID uint
 	FirstName string
 	LastName string
     UserName string
@@ -52,42 +52,42 @@ type SASTClient struct {
 }
 
 type Project struct {
-	ProjectID int64
-	TeamID int64
+	ProjectID uint
+	TeamID uint
 	Name string
 }
 
 type Team struct {
-	TeamID int64
+	TeamID uint
 	Name string
-    ParentID int64
+    ParentID uint
 	Projects []Project
 }
 
 type Preset struct {
-	PresetID int64
+	PresetID uint
 	Name string
 }
 
 type Query struct {
-	QueryID int64
-	QueryGroupID int64
+	QueryID uint
+	QueryGroupID uint
 	Name string
 	Severity int
 	UpdateTime time.Time
 }
 
 type QueryGroup struct {
-	QueryGroupID int64
+	QueryGroupID uint
 	Name string
 	Language string
 	Scope string
-	OwningTeamID int64
-	OwningProjectID int64
+	OwningTeamID uint
+	OwningProjectID uint
 }
 
 type Report struct {
-	ReportID int   `json:"reportId"`
+	ReportID uint   `json:"reportId"`
 	Links    Links `json:"links"`
 }
 
@@ -104,13 +104,28 @@ type ReportStatus struct {
 	Value string `json:"value"`
 }
 
+type Result struct {
+    QueryName       string
+    PathID          uint
+    Line            uint
+    Column          uint
+    DetectionDate   string
+    Filename        string
+    DeepLink        string
+    Status          string
+    Severity        string
+    State           string
+    SimilarityID    int64
+    SourceMethod    string
+    DestinationMethod string
+}
+
 type Scan struct {
-	ScanID int64
-	ProjectID int64
+	ScanID uint
+	ProjectID uint
 	Status string
 	FinishTime time.Time
 }
-
 
 func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
 	request, err := http.NewRequest(method, url, body)
@@ -204,7 +219,7 @@ func (c *SASTClient) get( api string ) ([]byte,error) {
 
 
 func (s Scan) ToString() string {
-	return "Scan ID: " + strconv.FormatInt( s.ScanID, 10 ) + ", Project ID: " + strconv.FormatInt( s.ProjectID, 10 ) + ", Status: " + s.Status + ", Time: " + s.FinishTime.Format(time.RFC3339)
+	return fmt.Sprintf( "Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.ProjectID, s.Status, s.FinishTime.Format(time.RFC3339) )
 }
 
 func getUserToken( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (string, error) {
@@ -254,7 +269,7 @@ func getUserToken( client *http.Client, base_url string, username string, passwo
     return token, nil
 }
 
-func (c *SASTClient) GetProject ( id int64 ) (Project, error) {
+func (c *SASTClient) GetProject ( id uint ) (Project, error) {
     projects, err := c.GetProjects()
     
     if err != nil {
@@ -278,16 +293,17 @@ func (c *SASTClient) GetProjects () ([]Project, error) {
 
 }
 
-func (c *SASTClient) GetProjectsInTeam ( teamid int64 ) ([]Project, error) {
+func (c *SASTClient) GetProjectsInTeam ( teamid uint ) ([]Project, error) {
 
-    response, err := c.get( "/projects?teamId=" + strconv.FormatInt( teamid, 10 ) )
+    response, err := c.get( fmt.Sprintf( "/projects?teamId=%d", teamid ) )
     if err != nil {
         return []Project{}, err
     }
     return c.parseProjects( response )
 }
 
-func (c *SASTClient) RequestNewReport(scanID int, reportType string) (Report, error) {
+
+func (c *SASTClient) RequestNewReport(scanID uint, reportType string) (Report, error) {
 	report := Report{}
 	jsonData := map[string]interface{}{
 		"scanId":     scanID,
@@ -303,41 +319,176 @@ func (c *SASTClient) RequestNewReport(scanID int, reportType string) (Report, er
 	header.Set("Content-Type", "application/json")
 	data, err := c.sendRequest(http.MethodPost, "/reports/sastScan", bytes.NewReader(jsonValue), header)
 	if err != nil {
-		return report, errors.Wrapf(err, "Failed to trigger report generation for scan %v", scanID)
+		return report, errors.Wrapf(err, "Failed to trigger report generation for scan %d", scanID)
 	}
 
 	err = json.Unmarshal(data, &report)
 	return report, err
 }
 
-func (c *SASTClient) GetReportStatus(reportID int) (ReportStatusResponse, error) {
+func (c *SASTClient) GetReportStatus(reportID uint) (ReportStatusResponse, error) {
 	var response ReportStatusResponse
 
 	header := http.Header{}
 	header.Set("Accept", "application/json")
-	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%v/status", reportID), nil, header)
+	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%d/status", reportID), nil, header)
 	if err != nil {
-		c.logger.Errorf("Failed to fetch report status for reportID %v: %s", reportID, err)
-		return response, errors.Wrapf(err, "failed to fetch report status for reportID %v", reportID)
+		c.logger.Errorf("Failed to fetch report status for reportID %d: %s", reportID, err)
+		return response, errors.Wrapf(err, "failed to fetch report status for reportID %d", reportID)
 	}
 
 	json.Unmarshal(data, &response)
 	return response, nil
 }
 
-func (c *SASTClient) DownloadReport(reportID int) ([]byte, error) {
+func (c *SASTClient) DownloadReport(reportID uint) ([]byte, error) {
 	header := http.Header{}
 	header.Set("Accept", "application/json")
-	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%v", reportID), nil, header)
+	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%d", reportID), nil, header)
 	if err != nil {
-		return []byte{}, errors.Wrapf(err, "failed to download report with reportID %v", reportID)
+		return []byte{}, errors.Wrapf(err, "failed to download report with reportID %d", reportID)
 	}
 	return data, nil
 }
 
-func (c *SASTClient) GetScan( scanid int64 ) (Scan,error) {
-	c.logger.Debug( "Get scan " + strconv.FormatInt( scanid, 10 ))
-    response, err := c.get( "/sast/scans/" + strconv.FormatInt( scanid, 10 ) )
+// convenience function
+func (c *SASTClient) GenerateAndDownloadReport( scanID uint, reportType string ) ([]byte, error) {
+	var reportBytes []byte
+    report, err := c.RequestNewReport( scanID, reportType )
+	
+	if err != nil {
+		c.logger.Error( "Error requesting report: " + err.Error() )
+		return reportBytes, err
+	}
+
+	finalStatus := 1
+	for {
+		reportStatus, err := c.GetReportStatus(report.ReportID)
+		if err != nil {
+			c.logger.Error( "Error generating report: " + err.Error() )
+			return reportBytes, err
+		}
+		finalStatus = reportStatus.Status.ID
+		if finalStatus != 1 {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+
+	if finalStatus == 2 {
+		reportBytes, err = c.DownloadReport( report.ReportID )
+		if err != nil {
+			c.logger.Error( "Error downloading report: " + err.Error() )
+			return reportBytes, err
+		}
+	
+	} else {
+		c.logger.Info( "Failure during report generation" )
+		return reportBytes, errors.New( "Failed during report generation" )
+	}
+
+    return reportBytes, nil
+}
+
+
+func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]Result, error) {
+    results := make( []Result, 0 )
+/*
+    Based on the Checkmarx step built into Project-Piper.io
+*/
+
+    var xmlResult struct {
+        XMLName                  xml.Name `xml:"CxXMLResults"`
+        InitiatorName            string   `xml:"InitiatorName,attr"`
+        ScanID                   string   `xml:"ScanId,attr"`
+        Owner                    string   `xml:"Owner,attr"`
+        ProjectID                string   `xml:"ProjectId,attr"`
+        ProjectName              string   `xml:"ProjectName,attr"`
+        TeamFullPathOnReportDate string   `xml:"TeamFullPathOnReportDate,attr"`
+        DeepLink                 string   `xml:"DeepLink,attr"`
+        ScanStart                string   `xml:"ScanStart,attr"`
+        Preset                   string   `xml:"Preset,attr"`
+        ScanTime                 string   `xml:"ScanTime,attr"`
+        LinesOfCodeScanned       uint      `xml:"LinesOfCodeScanned,attr"`
+        FilesScanned             uint      `xml:"FilesScanned,attr"`
+        ReportCreationTime       string   `xml:"ReportCreationTime,attr"`
+        Team                     string   `xml:"Team,attr"`
+        CheckmarxVersion         string   `xml:"CheckmarxVersion,attr"`
+        ScanType                 string   `xml:"ScanType,attr"`
+        SourceOrigin             string   `xml:"SourceOrigin,attr"`
+        Visibility               string   `xml:"Visibility,attr"`
+        Queries                  []struct {
+            XMLName xml.Name `xml:"Query"`
+            Name    string   `xml:"name,attr"`
+            Results []struct {
+                XMLName       xml.Name `xml:"Result"`
+                State         string   `xml:"state,attr"`
+                Status        string   `xml:"Status,attr"`
+                Filename      string    `xml:"Filename,attr"`
+                Line          uint      `xml:"Line,attr"`
+                Column        uint      `xml:"Column,attr"`
+                DeepLink      string    `xml:"DeepLink,attr"`
+                DetectionDate string    `xml:"DetectionDate,attr"`
+                Severity      string   `xml:"Severity,attr"`
+                FalsePositive string   `xml:"FalsePositive,attr"`
+
+                Path           struct {
+                    PathID  uint `xml:"PathId,attr"`
+                    SourceMethod string `xml:"SourceMethod,attr"`
+                    DestinationMethod string `xml:"DestinationMethod,attr"`
+                    SimilarityID int64 `xml:"SimilarityId,attr"`
+                } `xml:"Path"`
+            } `xml:"Result"`
+        }  `xml:"Query"`
+    }
+
+    err := xml.Unmarshal(xmlReportData, &xmlResult)
+    if err != nil {
+        return results, errors.Wrap(err, "failed to unmarshal XML report")
+    }
+
+    for _, query := range xmlResult.Queries {
+        for _, result := range query.Results {
+            
+
+            auditState := "ToVerify"
+            switch result.State {
+            case "1":
+                auditState = "NotExploitable"
+            case "2":
+                auditState = "Confirmed"
+            case "3":
+                auditState = "Urgent"
+            case "4":
+                auditState = "ProposedNotExploitable"
+            case "0":
+            default:
+                auditState = "ToVerify"
+            }
+
+            results = append( results, Result{
+                query.Name,
+                result.Path.PathID,
+                result.Line,
+                result.Column,
+                result.DetectionDate,
+                result.Filename,
+                result.DeepLink,
+                result.Status,
+                result.Severity,
+                auditState,
+                result.Path.SimilarityID,
+                result.Path.SourceMethod,
+                result.Path.DestinationMethod,
+            } )
+        }
+    }
+    return results, nil
+}
+
+func (c *SASTClient) GetScan( scanid uint ) (Scan,error) {
+	c.logger.Debugf( "Get scan %d", scanid )
+    response, err := c.get( fmt.Sprintf( "/sast/scans/%d", scanid) ) 
     if err != nil {
         return Scan{}, err
     }
@@ -345,9 +496,9 @@ func (c *SASTClient) GetScan( scanid int64 ) (Scan,error) {
     return c.parseScan( response )
 }
 
-func (c *SASTClient) GetLastScan ( projectid int64 ) (Scan, error) {
+func (c *SASTClient) GetLastScan ( projectid uint ) (Scan, error) {
     var scan Scan
-    response, err := c.get( "/sast/scans?projectId=" + strconv.FormatInt( projectid, 10 ) + "&scanStatus=Finished&last=1" )
+    response, err := c.get( fmt.Sprintf( "/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid ) )
     if err != nil {
         return scan, err
     }
@@ -362,10 +513,10 @@ func (c *SASTClient) GetLastScan ( projectid int64 ) (Scan, error) {
 func (c *SASTClient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
 	var scan Scan
 
-	scan.ScanID = int64( (*single_scan)["id"].(float64))
+	scan.ScanID = uint( (*single_scan)["id"].(float64))
 
 	project := (*single_scan)["project"]
-	scan.ProjectID = int64(project.(map[string]interface{})["id"].(float64))
+	scan.ProjectID = uint(project.(map[string]interface{})["id"].(float64))
 
 	status := (*single_scan)["status"]
 	scan.Status = status.(map[string]interface{})["name"].(string)
@@ -431,8 +582,8 @@ func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
 	} else {
 		projectList = make([]Project, len(projects) )
 		for id := range projects {
-			projectList[id].ProjectID = int64(projects[id].(map[string]interface{})["id"].(float64))
-			projectList[id].TeamID = int64(projects[id].(map[string]interface{})["teamId"].(float64))
+			projectList[id].ProjectID = uint(projects[id].(map[string]interface{})["id"].(float64))
+			projectList[id].TeamID = uint(projects[id].(map[string]interface{})["teamId"].(float64))
 			projectList[id].Name = projects[id].(map[string]interface{})["name"].(string)
 		}
 	}
@@ -468,9 +619,9 @@ func (c *SASTClient) parseTeams( input []byte ) ([]Team, error) {
 	} else {
 		teamList = make([]Team, len(teams) )
 		for id := range teams {
-			teamList[id].TeamID = int64(teams[id].(map[string]interface{})["id"].(float64))
+			teamList[id].TeamID = uint(teams[id].(map[string]interface{})["id"].(float64))
 			teamList[id].Name = teams[id].(map[string]interface{})["fullName"].(string)
-            teamList[id].ParentID = int64(teams[id].(map[string]interface{})["parentId"].(float64))
+            teamList[id].ParentID = uint(teams[id].(map[string]interface{})["parentId"].(float64))
 		}
 	}
 
@@ -487,7 +638,7 @@ func (c *SASTClient) GetUsers () ([]User, error) {
 
 func (c *SASTClient) parseUserFromInterface( single_user *map[string]interface{} ) User {
 	user := User{}
-	user.UserID = int64( (*single_user)["id"].(float64) )
+	user.UserID = uint( (*single_user)["id"].(float64) )
 	user.FirstName = (*single_user)["firstName"].(string)
 	user.LastName = (*single_user)["lastName"].(string)
     user.UserName = (*single_user)["userName"].(string)
@@ -528,7 +679,7 @@ func (c *SASTClient) GetCurrentUser () (User, error) {
     //c.logger.Warning( "Parsing input: " + strig(response) )
 	if err == nil {
 		return User {
-			int64(jsonBody["id"].(float64)),
+			uint(jsonBody["id"].(float64)),
 			jsonBody["firstName"].(string),
 			jsonBody["lastName"].(string),
             jsonBody["userName"].(string),
@@ -542,7 +693,7 @@ func (c *SASTClient) GetCurrentUser () (User, error) {
 
 func (c *SASTClient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
 	preset := Preset{}
-	preset.PresetID = int64( (*single_preset)["id"].(float64) )
+	preset.PresetID = uint( (*single_preset)["id"].(float64) )
 	preset.Name = (*single_preset)["name"].(string)
 	return preset
 }
