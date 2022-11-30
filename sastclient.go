@@ -20,10 +20,11 @@ func init() {
 }
 
 type User struct {
-	UserID uint
+	UserID uint64           `json:"id"`
 	FirstName string
 	LastName string
     UserName string
+    Email string
 }
 
 
@@ -46,42 +47,42 @@ type SASTClient struct {
 }
 
 type Project struct {
-	ProjectID uint
-	TeamID uint
+	ProjectID uint64            `json:"id"`
+	TeamID uint64
 	Name string
 }
 
 type Team struct {
-	TeamID uint
+	TeamID uint64               `json:"id"`
 	Name string
-    ParentID uint
+    ParentID uint64
 	Projects []Project
 }
 
 type Preset struct {
-	PresetID uint
+	PresetID uint64             `json:"id"`
 	Name string
 }
 
 type Query struct {
-	QueryID uint
-	QueryGroupID uint
+	QueryID uint64
+	QueryGroupID uint64
 	Name string
 	Severity int
 	UpdateTime time.Time
 }
 
 type QueryGroup struct {
-	QueryGroupID uint
+	QueryGroupID uint64
 	Name string
 	Language string
 	Scope string
-	OwningTeamID uint
-	OwningProjectID uint
+	OwningTeamID uint64
+	OwningProjectID uint64
 }
 
 type Report struct {
-	ReportID uint   `json:"reportId"`
+	ReportID uint64   `json:"reportId"`
 	Links    Links `json:"links"`
 }
 
@@ -99,26 +100,26 @@ type ReportStatus struct {
 }
 
 type Scan struct {
-	ScanID uint
-	ProjectID uint
+	ScanID uint64
+	ProjectID uint64
 	Status string
 	FinishTime time.Time
 }
 
 type PathNode struct {
     FileName    string
-    Line        uint
-    Column      uint
+    Line        uint64
+    Column      uint64
     Name        string
-    Length      uint
+    Length      uint64
 }
 
 
 type ScanResult struct {
     QueryName       string
-    PathID          uint
-    Line            uint
-    Column          uint
+    PathID          uint64
+    Line            uint64
+    Column          uint64
     DetectionDate   string
     Filename        string
     DeepLink        string
@@ -132,11 +133,11 @@ type ScanResult struct {
 }
 
 type ScanResultStatusSummary struct {
-    ToVerify        uint
-    NotExploitable  uint
-    Confirmed       uint
-    ProposedNotExploitable uint
-    Urgent          uint
+    ToVerify        uint64
+    NotExploitable  uint64
+    Confirmed       uint64
+    ProposedNotExploitable uint64
+    Urgent          uint64
 }
 
 type ScanResultSummary struct {
@@ -185,27 +186,29 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
 
 
     response, err := c.httpClient.Do(request)
-    defer response.Body.Close()
     if err != nil {
-        resBody,err := ioutil.ReadAll( response.Body )
+        resBody,_ := ioutil.ReadAll( response.Body )
         c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
         c.logger.Errorf("HTTP request failed with error: %s", err)
-        return []byte{}, err
+        return resBody, err
     }
     if response.StatusCode >= 400 {
         resBody,_ := ioutil.ReadAll( response.Body )
         c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
         c.logger.Errorf("HTTP response indicates error: %v", response.Status )
-        return []byte{}, errors.New( "HTTP Response: " + response.Status )
+        return resBody, errors.New( "HTTP Response: " + response.Status )
     }
-
-    resBody, err := ioutil.ReadAll( response.Body )
+    
+    resBody,err := ioutil.ReadAll( response.Body )
 
 	if err != nil {
-		c.logger.Error( "Error reading response body: %s", err )
-		return []byte{}, err
+        if err.Error() == "remote error: tls: user canceled" {
+            c.logger.Warnf( "HTTP request encountered error: %s", err )
+        } else {
+            c.logger.Errorf( "Error reading response body: %s", err )
+        }
+        c.logger.Tracef( "Parsed: %v", string(resBody) )
 	}
-
 
     return resBody, nil
 }
@@ -239,7 +242,7 @@ func (c *SASTClient) get( api string ) ([]byte,error) {
 }
 
 
-func (s Scan) ToString() string {
+func (s *Scan) String() string {
 	return fmt.Sprintf( "Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.ProjectID, s.Status, s.FinishTime.Format(time.RFC3339) )
 }
 
@@ -290,7 +293,11 @@ func getUserToken( client *http.Client, base_url string, username string, passwo
     return token, nil
 }
 
-func (c *SASTClient) GetProject ( id uint ) (Project, error) {
+func (p *Project) String() string {
+    return fmt.Sprintf( "[%d] %v", p.ProjectID, p.Name )
+}
+
+func (c *SASTClient) GetProject ( id uint64 ) (Project, error) {
     projects, err := c.GetProjects()
     
     if err != nil {
@@ -306,25 +313,34 @@ func (c *SASTClient) GetProject ( id uint ) (Project, error) {
 }
 
 func (c *SASTClient) GetProjects () ([]Project, error) {
+    c.logger.Debug( "Get SAST Projects" )
+    var projects []Project
     response, err := c.get( "/projects" )
     if err != nil {
-        return []Project{},  err
+        return projects,  err
     }
-    return c.parseProjects( response )
+
+    err = json.Unmarshal( response, &projects )
+    c.logger.Tracef( "Retrieved %d projects", len(projects) )
+    return projects, err
 
 }
 
-func (c *SASTClient) GetProjectsInTeam ( teamid uint ) ([]Project, error) {
-
+func (c *SASTClient) GetProjectsInTeam ( teamid uint64 ) ([]Project, error) {
+    c.logger.Debug( "Get SAST Projects in team" )
+    var projects []Project
     response, err := c.get( fmt.Sprintf( "/projects?teamId=%d", teamid ) )
     if err != nil {
-        return []Project{}, err
+        return projects, err
     }
-    return c.parseProjects( response )
+
+    err = json.Unmarshal( response, &projects )
+    c.logger.Tracef( "Retrieved %d projects", len(projects) )
+    return projects, err
 }
 
 
-func (c *SASTClient) RequestNewReport(scanID uint, reportType string) (Report, error) {
+func (c *SASTClient) RequestNewReport(scanID uint64, reportType string) (Report, error) {
 	report := Report{}
 	jsonData := map[string]interface{}{
 		"scanId":     scanID,
@@ -347,7 +363,7 @@ func (c *SASTClient) RequestNewReport(scanID uint, reportType string) (Report, e
 	return report, err
 }
 
-func (c *SASTClient) GetReportStatus(reportID uint) (ReportStatusResponse, error) {
+func (c *SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, error) {
 	var response ReportStatusResponse
 
 	header := http.Header{}
@@ -362,7 +378,7 @@ func (c *SASTClient) GetReportStatus(reportID uint) (ReportStatusResponse, error
 	return response, nil
 }
 
-func (c *SASTClient) DownloadReport(reportID uint) ([]byte, error) {
+func (c *SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
 	header := http.Header{}
 	header.Set("Accept", "application/json")
 	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%d", reportID), nil, header)
@@ -373,7 +389,7 @@ func (c *SASTClient) DownloadReport(reportID uint) ([]byte, error) {
 }
 
 // convenience function
-func (c *SASTClient) GenerateAndDownloadReport( scanID uint, reportType string ) ([]byte, error) {
+func (c *SASTClient) GenerateAndDownloadReport( scanID uint64, reportType string ) ([]byte, error) {
 	var reportBytes []byte
     report, err := c.RequestNewReport( scanID, reportType )
 	
@@ -430,8 +446,8 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]ScanResult, e
         ScanStart                string   `xml:"ScanStart,attr"`
         Preset                   string   `xml:"Preset,attr"`
         ScanTime                 string   `xml:"ScanTime,attr"`
-        LinesOfCodeScanned       uint      `xml:"LinesOfCodeScanned,attr"`
-        FilesScanned             uint      `xml:"FilesScanned,attr"`
+        LinesOfCodeScanned       uint64      `xml:"LinesOfCodeScanned,attr"`
+        FilesScanned             uint64      `xml:"FilesScanned,attr"`
         ReportCreationTime       string   `xml:"ReportCreationTime,attr"`
         Team                     string   `xml:"Team,attr"`
         CheckmarxVersion         string   `xml:"CheckmarxVersion,attr"`
@@ -446,15 +462,15 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]ScanResult, e
                 State         string   `xml:"state,attr"`
                 Status        string   `xml:"Status,attr"`
                 Filename      string    `xml:"FileName,attr"`
-                Line          uint      `xml:"Line,attr"`
-                Column        uint      `xml:"Column,attr"`
+                Line          uint64      `xml:"Line,attr"`
+                Column        uint64      `xml:"Column,attr"`
                 DeepLink      string    `xml:"DeepLink,attr"`
                 DetectionDate string    `xml:"DetectionDate,attr"`
                 Severity      string   `xml:"Severity,attr"`
                 FalsePositive string   `xml:"FalsePositive,attr"`
 
                 Path           struct {
-                    PathID  uint `xml:"PathId,attr"`
+                    PathID  uint64 `xml:"PathId,attr"`
                     SourceMethod string `xml:"SourceMethod,attr"`
                     DestinationMethod string `xml:"DestinationMethod,attr"`
                     SimilarityID int64 `xml:"SimilarityId,attr"`
@@ -547,7 +563,7 @@ func (c *SASTClient) GetScanResultSummary( results []ScanResult ) ScanResultSumm
     return summary
 }
 
-func (s ScanResultStatusSummary) Total() uint {
+func (s ScanResultStatusSummary) Total() uint64 {
     return s.ToVerify + s.Confirmed + s.Urgent + s.ProposedNotExploitable + s.NotExploitable
 }
 func (s ScanResultStatusSummary) String() string {
@@ -564,37 +580,213 @@ func (s ScanResultSummary) String() string {
                 s.High.NotExploitable + s.Medium.NotExploitable + s.Low.NotExploitable + s.Information.NotExploitable ) )
 }
 
-func (c *SASTClient) GetScan( scanid uint ) (Scan,error) {
-	c.logger.Debugf( "Get scan %d", scanid )
-    response, err := c.get( fmt.Sprintf( "/sast/scans/%d", scanid) ) 
-    if err != nil {
-        return Scan{}, err
-    }
-
-    return c.parseScan( response )
-}
-
-func (c *SASTClient) GetLastScan ( projectid uint ) (Scan, error) {
+func (c *SASTClient) GetScan( scanid uint64 ) (Scan,error) {
+	c.logger.Debugf( "Get SAST scan %d", scanid )
     var scan Scan
-    response, err := c.get( fmt.Sprintf( "/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid ) )
+
+    response, err := c.get( fmt.Sprintf( "/sast/scans/%d", scanid) ) 
     if err != nil {
         return scan, err
     }
 
-	scans,err := c.parseScans( response )
+    err = json.Unmarshal( response, &scan )
+    return scan, err
+}
+
+func (c *SASTClient) GetLastScan ( projectid uint64 ) (Scan, error) {
+    var scans []Scan
+    response, err := c.get( fmt.Sprintf( "/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid ) )
+    if err != nil {
+        return Scan{}, err
+    }
+
+	err = json.Unmarshal( response, &scans)
 	if err != nil {
-		return scan, err
+		return Scan{}, err
 	}
 	return scans[0], nil
 }
 
+
+
+func (t Team) HasProjects() bool {
+	return len(t.Projects) > 0
+}
+
+
+func (c *SASTClient) GetTeams () ([]Team, error) {
+    c.logger.Debug( "Get SAST Teams" )
+    var teams []Team
+    response, err := c.get( "/auth/teams" )
+    if err != nil {
+        return teams, err
+    }
+
+    err = json.Unmarshal( response, &teams )
+    return teams, err
+}
+
+
+
+// Users
+func (u *User) String() string {
+    return fmt.Sprintf( "[%d] %v %v (%v)", u.UserID, u.FirstName, u.LastName, u.Email )
+}
+
+func (c *SASTClient) GetUsers () ([]User, error) {
+    c.logger.Debug( "Get SAST Users" )
+    var users []User
+    response, err := c.get( "/auth/users" )
+    if err != nil {
+        return users, err
+    }
+
+    err = json.Unmarshal( response, &users )
+    return users, err
+}
+
+
+
+func (c *SASTClient) GetCurrentUser () (User, error) {
+	c.logger.Trace( "Get SAST User Info" )
+    var user User
+	response, err := c.get( "/auth/MyProfile" )
+    if err != nil {
+        return user, err
+    }
+
+	err = json.Unmarshal( response, &user)
+    return user, err
+    //c.logger.Warning( "Parsing input: " + strig(response) )
+    /*
+	if err == nil {
+		return User {
+			uint64(jsonBody["id"].(float64)),
+			jsonBody["firstName"].(string),
+			jsonBody["lastName"].(string),
+            jsonBody["userName"].(string),
+
+		}, nil
+	} else {
+		c.logger.Error( "Login failed: " + err.Error() )
+        c.logger.Warning( "Failed while parsing response: " + string(response) )
+        return User{}, err
+	}*/
+}
+
+
+// Presets
+func (p *Preset) String() string {
+    return fmt.Sprintf( "[%d] %v", p.PresetID, p.Name )
+}
+
+func (c *SASTClient) GetPresets () ([]Preset, error) {
+    c.logger.Debug( "Get SAST Presets" )
+    var presets []Preset
+    response, err := c.get( "/sast/presets" )
+    if err != nil {
+        return presets, err
+    }
+
+    err = json.Unmarshal( response, &presets )
+    return presets, err
+}
+
+func (c *SASTClient) ProjectLink( p *Project )  string {
+    return fmt.Sprintf( "%v/CxWebClient/ProjectScans.aspx?id=%d", c.baseUrl, p.ProjectID )
+}
+
+func (c *SASTClient) PresetLink( p *Preset )  string {
+    return fmt.Sprintf( "%v/CxWebClient/Presets.aspx?id=%d", c.baseUrl, p.PresetID )
+}
+
+func (c *SASTClient) UserLink( u *User )  string {
+    return fmt.Sprintf( "%v/CxRestAPI/auth/#/users?id=%d", c.baseUrl, u.UserID )
+}
+
+/* no rest endpoint for this?
+func (c *SASTClient) GetQueries () *[]Query {
+    c.logger.Debug( "Get SAST Queries" )
+	if len( c.Queries ) == 0 {
+		//c.Queries = c.parseQueries( c.get( "/" )	)
+	}
+
+	return &c.Queries
+}*/
+
+
+func (c *SASTClient) String() string {
+	return c.baseUrl + " with token: " + c.authToken[:4] + "..." + c.authToken[ len(c.authToken) - 4:]
+}
+
+func (c *SASTClient) GetToken() string {
+    return c.authToken
+}
+
+func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTClient {
+	cli := &SASTClient{ client, token, base_url, logger, nil }
+
+	user, err := cli.GetCurrentUser()
+    cli.CurrentUser = &user
+    if err != nil {
+        logger.Errorf( "Error while fetching current user information: %s", err )
+    }
+
+//	cli.RefreshCache()
+	return cli
+}
+
+func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTClient, error) {
+	token, err := getUserToken( client, base_url, username, password, logger )
+    if err != nil {
+        logger.Fatal( "Error initializing SAST client: " + err.Error() )
+        return nil, err
+    }
+
+	return New( client, base_url, token, logger ), nil
+}
+
+
+
+
+
+////
+/*
+
+func (c *SASTClient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
+	preset := Preset{}
+	preset.PresetID = uint64( (*single_preset)["id"].(float64) )
+	preset.Name = (*single_preset)["name"].(string)
+	return preset
+}
+
+func (c *SASTClient) parsePresets( input []byte ) ([]Preset, error) {
+	var presets []map[string]interface{}
+	var presetList []Preset
+
+	c.logger.Trace( "Parsing presets from input: " + string(input) )
+	err := json.Unmarshal( input, &presets )
+	if err != nil {
+		c.logger.Error("Error: " + err.Error() )
+        return presetList, err
+	} else {
+		presetList = make([]Preset, len(presets) )
+		for id := range presets {
+			presetList[id] = c.parsePresetFromInterface( &(presets[id]) )
+		}
+	}
+
+	return presetList, nil
+}
+
+
 func (c *SASTClient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
 	var scan Scan
 
-	scan.ScanID = uint( (*single_scan)["id"].(float64))
+	scan.ScanID = uint64( (*single_scan)["id"].(float64))
 
 	project := (*single_scan)["project"]
-	scan.ProjectID = uint(project.(map[string]interface{})["id"].(float64))
+	scan.ProjectID = uint64(project.(map[string]interface{})["id"].(float64))
 
 	status := (*single_scan)["status"]
 	scan.Status = status.(map[string]interface{})["name"].(string)
@@ -660,8 +852,8 @@ func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
 	} else {
 		projectList = make([]Project, len(projects) )
 		for id := range projects {
-			projectList[id].ProjectID = uint(projects[id].(map[string]interface{})["id"].(float64))
-			projectList[id].TeamID = uint(projects[id].(map[string]interface{})["teamId"].(float64))
+			projectList[id].ProjectID = uint64(projects[id].(map[string]interface{})["id"].(float64))
+			projectList[id].TeamID = uint64(projects[id].(map[string]interface{})["teamId"].(float64))
 			projectList[id].Name = projects[id].(map[string]interface{})["name"].(string)
 		}
 	}
@@ -669,20 +861,6 @@ func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
 	return projectList, nil
 }
 
-
-func (t Team) HasProjects() bool {
-	return len(t.Projects) > 0
-}
-
-
-func (c *SASTClient) GetTeams () ([]Team, error) {
-    response, err := c.get( "/auth/teams" )
-    if err != nil {
-        return []Team{}, err
-    }
-
-    return c.parseTeams( response )
-}
 
 func (c *SASTClient) parseTeams( input []byte ) ([]Team, error) {
 	var teams []interface{}
@@ -697,29 +875,22 @@ func (c *SASTClient) parseTeams( input []byte ) ([]Team, error) {
 	} else {
 		teamList = make([]Team, len(teams) )
 		for id := range teams {
-			teamList[id].TeamID = uint(teams[id].(map[string]interface{})["id"].(float64))
+			teamList[id].TeamID = uint64(teams[id].(map[string]interface{})["id"].(float64))
 			teamList[id].Name = teams[id].(map[string]interface{})["fullName"].(string)
-            teamList[id].ParentID = uint(teams[id].(map[string]interface{})["parentId"].(float64))
+            teamList[id].ParentID = uint64(teams[id].(map[string]interface{})["parentId"].(float64))
 		}
 	}
 
 	return teamList, nil
 }
 
-func (c *SASTClient) GetUsers () ([]User, error) {
-    response, err := c.get( "/auth/users" )
-    if err != nil {
-        return []User{}, err
-    }
-    return c.parseUsers( response )
-}
-
 func (c *SASTClient) parseUserFromInterface( single_user *map[string]interface{} ) User {
 	user := User{}
-	user.UserID = uint( (*single_user)["id"].(float64) )
+	user.UserID = uint64( (*single_user)["id"].(float64) )
 	user.FirstName = (*single_user)["firstName"].(string)
 	user.LastName = (*single_user)["lastName"].(string)
     user.UserName = (*single_user)["userName"].(string)
+    user.Email = (*single_user)["email"].(string)
 	return user
 }
 
@@ -740,106 +911,6 @@ func (c *SASTClient) parseUsers( input []byte ) ([]User, error) {
 	}
 
 	return userList, nil
-}
+} 
 
-
-func (c *SASTClient) GetCurrentUser () (User, error) {
-	c.logger.Trace( "SAST Get User Info" )
-	response, err := c.get( "/auth/MyProfile" )
-    if err != nil {
-        return User{}, err
-    }
-
-	var jsonBody map[string]interface{}
-
-	err = json.Unmarshal( response, &jsonBody)
-
-    //c.logger.Warning( "Parsing input: " + strig(response) )
-	if err == nil {
-		return User {
-			uint(jsonBody["id"].(float64)),
-			jsonBody["firstName"].(string),
-			jsonBody["lastName"].(string),
-            jsonBody["userName"].(string),
-		}, nil
-	} else {
-		c.logger.Error( "Login failed: " + err.Error() )
-        c.logger.Warning( "Failed while parsing response: " + string(response) )
-        return User{}, err
-	}
-}
-
-func (c *SASTClient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
-	preset := Preset{}
-	preset.PresetID = uint( (*single_preset)["id"].(float64) )
-	preset.Name = (*single_preset)["name"].(string)
-	return preset
-}
-
-func (c *SASTClient) parsePresets( input []byte ) ([]Preset, error) {
-	var presets []map[string]interface{}
-	var presetList []Preset
-
-	c.logger.Trace( "Parsing presets from input: " + string(input) )
-	err := json.Unmarshal( input, &presets )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-        return presetList, err
-	} else {
-		presetList = make([]Preset, len(presets) )
-		for id := range presets {
-			presetList[id] = c.parsePresetFromInterface( &(presets[id]) )
-		}
-	}
-
-	return presetList, nil
-}
-
-func (c *SASTClient) GetPresets () ([]Preset, error) {
-    response, err := c.get( "/sast/presets" )
-    if err != nil {
-        return []Preset{}, err
-    }
-    return c.parsePresets( response )
-}
-
-/* no rest endpoint for this?
-func (c *SASTClient) GetQueries () *[]Query {
-	if len( c.Queries ) == 0 {
-		//c.Queries = c.parseQueries( c.get( "/" )	)
-	}
-
-	return &c.Queries
-}*/
-
-
-func (c *SASTClient) ToString() string {
-	return c.baseUrl + " with token: " + c.authToken[:4] + "..." + c.authToken[ len(c.authToken) - 4:]
-}
-
-func (c *SASTClient) GetToken() string {
-    return c.authToken
-}
-
-func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTClient {
-	cli := &SASTClient{ client, token, base_url, logger, nil }
-
-	user, err := cli.GetCurrentUser()
-    cli.CurrentUser = &user
-    if err != nil {
-        logger.Errorf( "Error while fetching current user information: %s", err )
-    }
-
-//	cli.RefreshCache()
-	return cli
-}
-
-func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTClient, error) {
-	token, err := getUserToken( client, base_url, username, password, logger )
-    if err != nil {
-        logger.Fatal( "Error initializing SAST client: " + err.Error() )
-        return nil, err
-    }
-
-	return New( client, base_url, token, logger ), nil
-}
+// */
