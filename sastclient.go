@@ -24,7 +24,10 @@ type User struct {
 	FirstName string
 	LastName string
     UserName string
+    LastLoginDate string
     Email string
+    RoleIDs    []uint64
+    TeamIDs     []uint64
 }
 
 type Role struct {
@@ -59,6 +62,20 @@ type Project struct {
 	ProjectID uint64            `json:"id"`
 	TeamID uint64
 	Name string
+    Settings    *ProjectSettings
+}
+
+
+type ProjectSettings struct {
+    ProjectID               uint64
+    PresetID                uint64
+    EngineConfigurationID   uint64
+    PostScanAction          int64
+    EmailNotifications      struct {
+        FailedScan      []string
+        BeforeScan      []string
+        AfterScan       []string
+    }
 }
 
 type Team struct {
@@ -71,23 +88,29 @@ type Team struct {
 type Preset struct {
 	PresetID uint64             `json:"id"`
 	Name string
+    Filled bool
+    Queries []Query
 }
 
 type Query struct {
-	QueryID uint64
-	QueryGroupID uint64
-	Name string
-	Severity int
-	UpdateTime time.Time
+	Name            string
+	QueryID         uint64      `xml:"QueryId"`
+    CWE             uint64      `xml:"Cwe"`
+	Severity        int
+	PackageID       uint64      `xml:"PackageId"`
+    Language        string
+    Group           string
 }
 
 type QueryGroup struct {
-	QueryGroupID uint64
-	Name string
-	Language string
-	Scope string
-	OwningTeamID uint64
-	OwningProjectID uint64
+	Name        string 
+    PackageID   uint64
+    Queries     []*Query
+	Language    string `xml:"languageName"`
+	OwningProjectID uint64 `xml:"ProjectId"`
+	PackageType string `xml:"PackageTypeName"`
+	OwningTeamID uint64 `xml:"OwningTeam"`
+
 }
 
 type Report struct {
@@ -392,7 +415,7 @@ func (p *Project) String() string {
     return fmt.Sprintf( "[%d] %v", p.ProjectID, p.Name )
 }
 
-func (c *SASTClient) GetProject ( id uint64 ) (Project, error) {
+func (c *SASTClient) GetProject( id uint64 ) (Project, error) {
     projects, err := c.GetProjects()
     
     if err != nil {
@@ -407,7 +430,7 @@ func (c *SASTClient) GetProject ( id uint64 ) (Project, error) {
 	return Project{}, errors.New( "Project ID not found" )
 }
 
-func (c *SASTClient) GetProjects () ([]Project, error) {
+func (c *SASTClient) GetProjects() ([]Project, error) {
     c.logger.Debug( "Get SAST Projects" )
     var projects []Project
     response, err := c.get( "/projects" )
@@ -421,7 +444,7 @@ func (c *SASTClient) GetProjects () ([]Project, error) {
 
 }
 
-func (c *SASTClient) GetProjectsInTeam ( teamid uint64 ) ([]Project, error) {
+func (c *SASTClient) GetProjectsInTeam( teamid uint64 ) ([]Project, error) {
     c.logger.Debug( "Get SAST Projects in team" )
     var projects []Project
     response, err := c.get( fmt.Sprintf( "/projects?teamId=%d", teamid ) )
@@ -434,26 +457,59 @@ func (c *SASTClient) GetProjectsInTeam ( teamid uint64 ) ([]Project, error) {
     return projects, err
 }
 
-func (c *SASTClient) GetScanPresetSOAP( scanid uint64) (Preset, error) {
-    // currently this is discarding most of the returned data, could be better.
-    // TODO: project configuration structure 
-/*
-    var xmlResponse struct {
-        Envelope struct {
-            Body struct {
-                GetScanSummaryResponse struct {
-                    GetScanSummaryResult struct {
-                        IsSuccessfull       string
-                        Preset              string
-                        ErrorMessage        string
-                        LOC                 uint64    
-                    }
-                }
-            } `xml:"soap:body"`
-        } `xml:"soap:envelope"`    
-    }*/
 
-    //var xmlResponse map[string]map[string]map[string]map[string]string
+
+func (c *SASTClient) GetProjectSettings( projectid uint64 ) (ProjectSettings, error) {
+    var responseStruct struct {
+        Project struct {
+            ID      uint64
+        }
+        Preset struct {
+            ID      uint64
+        }
+        EngineConfiguration struct {
+            ID      uint64
+        }
+        PostScanAction interface{}
+        EmailNotifications      struct {
+            FailedScan      []string
+            BeforeScan      []string
+            AfterScan       []string
+        }
+    }
+
+    var settings ProjectSettings
+
+    c.logger.Debug( "Get Project Settings for project ", projectid )
+
+    response, err := c.get( fmt.Sprintf( "/sast/scanSettings/%d", projectid ) )
+    if err != nil {
+        return settings,  err
+    }
+
+    err = json.Unmarshal( response, &responseStruct )
+    if err != nil {
+        return settings, err
+    }
+
+    settings.ProjectID = responseStruct.Project.ID
+    settings.PresetID = responseStruct.Preset.ID
+    settings.EngineConfigurationID = responseStruct.EngineConfiguration.ID
+    
+    if responseStruct.PostScanAction == nil {
+        settings.PostScanAction = -1
+    } else {
+        settings.PostScanAction = responseStruct.PostScanAction.(int64)
+    }
+
+    settings.EmailNotifications.FailedScan = responseStruct.EmailNotifications.FailedScan
+    settings.EmailNotifications.BeforeScan = responseStruct.EmailNotifications.BeforeScan
+    settings.EmailNotifications.AfterScan = responseStruct.EmailNotifications.AfterScan
+
+    return settings, err
+}
+
+func (c *SASTClient) GetScanPresetSOAP( scanid uint64) (Preset, error) {
     var xmlResponse struct {
         XMLName     xml.Name `xml:"Envelope"`
         Body struct {
@@ -486,15 +542,12 @@ func (c *SASTClient) GetScanPresetSOAP( scanid uint64) (Preset, error) {
 
     result := xmlResponse.Body.GetScanSummaryResponse.GetScanSummaryResult
     
-    //result := xmlResponse["Envelope"]["Body"]["GetScanSummaryResponse"]["GetScanSummaryResult"]
-    //xmlResponse = xmlResponse["Envelope"].(map[string]interface{})
-    //xmlResponse = xmlResponse["Body"].(map[string]interface{})
-    //xmlResponse = xmlResponse["GetScanSummaryResponse"].(map[string]interface{})
-    //result := xmlResponse["GetScanSummaryResult"].(map[string]string)
-
     if result.IsSuccesfull != true {
         c.logger.Errorf( "SOAP request error: %v", result.ErrorMessage )
-        c.logger.Infof( "Full response: %v", string(response) )
+        c.logger.Tracef( "Full response: %v", string(response) )
+        if result.ErrorMessage == "Invalid_Token" {
+            c.logger.Errorf( " - SOAP Token %v is not valid?", shortenGUID( c.soapToken ) )
+        }
         return Preset{}, errors.New( fmt.Sprintf( "SOAP request failed: %v", result.ErrorMessage ) )
     }
 
@@ -511,6 +564,94 @@ func (c *SASTClient) GetScanPresetSOAP( scanid uint64) (Preset, error) {
     }
 
     return Preset{}, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+}
+
+func (c *SASTClient) GetQueriesSOAP() ([]QueryGroup, []Query, error) {
+    var xmlResponse struct {
+        XMLName     xml.Name `xml:"Envelope"`
+        Body struct {
+            XMLName xml.Name `xml:"Body"`
+            Response struct {
+                XMLName xml.Name `xml:"GetQueryCollectionResponse"`
+                Result struct {
+                    XMLName xml.Name `xml:"GetQueryCollectionResult"`
+                    IsSuccesfull       bool `xml:"IsSuccesfull"`                    
+                    ErrorMessage        string
+                    QueryGroupsList struct {
+                        XMLName xml.Name `xml:"QueryGroups"`
+                        QueryGroups []struct {
+                            Name            string      
+                            PackageId       uint64
+                            QueriesList struct {
+                                XMLName xml.Name 
+                                Queries     []Query `xml:"CxWSQuery"`
+                            } `xml:"Queries"`
+                            LanguageName    string
+                            PackageTypeName string
+                            ProjectID       uint64
+                            OwningTeam      uint64
+                        } `xml:"CxWSQueryGroup"`  
+                    }
+                }
+            }
+        } 
+    }
+
+    Queries := make( []Query, 0 )
+    QueryGroups := make( []QueryGroup, 0 )
+
+    c.logger.Debug( "Get SAST Query Collection SOAP" )
+    response, err := c.sendSOAPRequest( "GetQueryCollection", "<i_SessionID></i_SessionID>" )
+    if err != nil {
+        return QueryGroups, Queries, err
+    }
+
+    err = xml.Unmarshal( response, &xmlResponse )
+    if err != nil {
+        c.logger.Errorf( "Failed to parse SOAP response: %s", err )
+        c.logger.Tracef( "Parsed from: %v", string(response) )
+        return QueryGroups, Queries, err
+    }
+
+    if xmlResponse.Body.Response.Result.IsSuccesfull != true {
+        c.logger.Errorf( "SOAP request error: %v", xmlResponse.Body.Response.Result.ErrorMessage )
+        c.logger.Infof( "Full response: %v", string(response) )
+        return QueryGroups, Queries, errors.New( fmt.Sprintf( "SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage ) )
+    }
+
+    for _, g := range xmlResponse.Body.Response.Result.QueryGroupsList.QueryGroups {
+        for _, q := range g.QueriesList.Queries {
+            q.Language = g.LanguageName
+            q.Group = g.Name
+            Queries = append( Queries, q )
+        }
+    }
+    c.logger.Debugf( "Parsed %d queries", len( Queries ) )
+
+    for _, g := range xmlResponse.Body.Response.Result.QueryGroupsList.QueryGroups {
+        qlist := make( []*Query, 0 )
+        for _, q := range g.QueriesList.Queries {
+            cq := c.GetQueryByID( q.QueryID, &Queries )
+            qlist = append( qlist, cq )
+        }
+
+        QueryGroups = append( QueryGroups, QueryGroup{ g.Name, g.PackageId, qlist, g.LanguageName, g.ProjectID, g.PackageTypeName, g.OwningTeam } )
+    }
+    c.logger.Debugf( "Parsed %d query groups", len(QueryGroups) )
+
+    return QueryGroups, Queries, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+}
+
+func (c *SASTClient) GetQueryByID( qid uint64, queries *[]Query ) *Query {
+    for id, q := range *queries {
+        if q.QueryID == qid {
+            return &(*queries)[id]
+        }
+    }
+    return nil
+}
+func (q *Query) String() string {
+    return fmt.Sprintf( "[%d] %v -> %v -> %v", q.QueryID, q.Language, q.Group, q.Name )
 }
 
 
@@ -891,6 +1032,44 @@ func (c *SASTClient) GetPresets () ([]Preset, error) {
     return presets, err
 }
 
+func (c *SASTClient) GetPresetContents(p *Preset, queries *[]Query ) error {
+    c.logger.Debugf( "Fetching contents for preset %v", p.PresetID )
+
+    if len(*queries) == 0 {
+        return errors.New( "Queries list is empty" )
+    }
+
+    response, err := c.sendRequest( http.MethodGet, fmt.Sprintf( "/sast/presets/%d", p.PresetID ), nil, nil )
+    if err != nil {
+        return err
+    }
+
+    var PresetContents struct {
+        ID              uint64
+        Name            string
+        Owner           string
+        QueryIDs        []uint64
+    }
+
+    err = json.Unmarshal( response, &PresetContents )
+    if err != nil {
+        return errors.Wrap( err, "Failed to parse preset contents" )
+    }
+
+    c.logger.Tracef( "Parsed preset %v with %d queries", PresetContents.Name, len( PresetContents.QueryIDs ) )
+
+    p.Queries = make( []Query, 0 )
+    for _, qid := range PresetContents.QueryIDs {
+        q := c.GetQueryByID( qid, queries )
+        if q != nil {
+            p.Queries = append( p.Queries, *q )
+            c.logger.Tracef( " - linked query: %v", q.String() )
+        }
+    }
+
+    p.Filled = true
+    return nil
+}
 
 
 // Links to objects in the portal
@@ -913,17 +1092,6 @@ func (c *SASTClient) RoleLink( r *Role )  string {
 func (c *SASTClient) TeamLink( t *Team )  string {
     return fmt.Sprintf( "%v/CxRestAPI/auth/#/teams/id=%d", c.baseUrl, t.TeamID ) // this link doesn't actually work, just takes you to the main page
 }
-
-/* no rest endpoint for this?
-func (c *SASTClient) GetQueries () *[]Query {
-    c.logger.Debug( "Get SAST Queries" )
-	if len( c.Queries ) == 0 {
-		//c.Queries = c.parseQueries( c.get( "/" )	)
-	}
-
-	return &c.Queries
-}*/
-
 
 func (c *SASTClient) String() string {
 	return c.baseUrl + " with token: " + shortenGUID( c.authToken )

@@ -70,6 +70,21 @@ func (c *SASTCache) RefreshProjects( client *SASTClient ) error {
     if !c.ProjectRefresh {
         c.ProjectRefresh = true
         c.Projects, err = client.GetProjects()
+
+        if err != nil {
+            client.logger.Errorf( "Failed while retrieving projects: %s", err )
+        } else {
+            if len( c.Projects ) > 0 {
+                for id, p := range c.Projects {
+                    settings, err := client.GetProjectSettings( p.ProjectID )
+                    if err != nil {
+                        client.logger.Warnf( "Failed while retrieving project settings for project %d: %s", p.ProjectID, err )
+                    } else {
+                        c.Projects[id].Settings = &settings
+                    }
+                }
+            }
+        }
         c.ProjectRefresh = false
     }
     return err
@@ -97,13 +112,11 @@ func (c *SASTCache) RefreshUsers( client *SASTClient ) error {
 
 func (c *SASTCache) RefreshQueries( client *SASTClient ) error {
     var err error
-    /*
-    // todo - db or soap
     if !c.QueryRefresh {
         c.QueryRefresh = true
-        c.Queries, err = client.GetQueries()
+        c.QueryGroups, c.Queries, err = client.GetQueriesSOAP()
         c.QueryRefresh = false
-    }*/
+    }
     return err
 }
 
@@ -112,6 +125,18 @@ func (c *SASTCache) RefreshPresets( client *SASTClient ) error {
     if !c.PresetRefresh {
         c.PresetRefresh = true
         c.Presets, err = client.GetPresets()
+        if err != nil {
+            client.logger.Errorf( "Failed while retrieving presets: %s", err )
+        } else {
+            if len( c.Queries ) > 0 {
+                for id, _ := range c.Presets {
+                    err := client.GetPresetContents( &c.Presets[id], &c.Queries )
+                    if err != nil {
+                        client.logger.Errorf( "Failed to retrieve preset contents for preset %v: %s", c.Presets[id].String(), err )
+                    }
+                }
+            }
+        }
         c.PresetRefresh = false
     }
     return err
@@ -142,8 +167,10 @@ func (c *SASTCache) Refresh( client *SASTClient ) error {
     err = c.RefreshUsers(client)
     if err != nil { return err }
 
-    err = c.RefreshQueries(client)
-    if err != nil { return err }
+    if client.soapToken != "" {
+        err = c.RefreshQueries(client)
+        if err != nil { return err }
+    }
 
     err = c.RefreshPresets(client)
     if err != nil { return err }
@@ -160,47 +187,105 @@ func (c *SASTCache) Refresh( client *SASTClient ) error {
 
 
 
-func (c *SASTCache) GetTeam( teamID uint64 ) (Team, error) {
-    for _, t := range c.Teams {
+func (c *SASTCache) GetTeam( teamID uint64 ) (*Team, error) {
+    for id, t := range c.Teams {
         if t.TeamID == teamID {
-            return t, nil
+            return &c.Teams[id], nil
         }
     }
-    return Team{}, errors.New( "No such team" )
+    return nil, errors.New( "No such team" )
+}
+func (c *SASTCache) GetTeamByName( name string ) (*Team, error) {
+    for id, t := range c.Teams {
+        if t.Name == name {
+            return &c.Teams[id], nil
+        }
+    }
+    return nil, errors.New( "No such team" )
 }
 
-func (c *SASTCache) GetUser( userID uint64 ) (User, error) {
-    for _, g := range c.Users {
+func (c *SASTCache) GetUser( userID uint64 ) (*User, error) {
+    for id, g := range c.Users {
         if g.UserID == userID {
-            return g, nil
+            return &c.Users[id], nil
         }
     }
-    return User{}, errors.New( "No such user" )
+    return nil, errors.New( "No such user" )
+}
+func (c *SASTCache) GetUserByEmail( email string ) (*User, error) {
+    for id, g := range c.Users {
+        if g.Email == email {
+            return &c.Users[id], nil
+        }
+    }
+    return nil, errors.New( "No such user" )
 }
 
-func (c *SASTCache) GetProject( projectID uint64 ) (Project, error) {
-    for _, g := range c.Projects {
+func (c *SASTCache) GetProject( projectID uint64 ) (*Project, error) {
+    for id, g := range c.Projects {
         if g.ProjectID == projectID {
-            return g, nil
+            return &c.Projects[id], nil
         }
     }
-    return Project{}, errors.New( "No such project" )
+    return nil, errors.New( "No such project" )
+}
+func (c *SASTCache) GetProjectByName( name string ) (*Project, error) {
+    for id, g := range c.Projects {
+        if g.Name == name {
+            return &c.Projects[id], nil
+        }
+    }
+    return nil, errors.New( "No such project" )
 }
 
-func (c *SASTCache) GetPreset( presetID uint64 ) (Preset, error) {
-    for _, g := range c.Presets {
+func (c *SASTCache) GetPreset( presetID uint64 ) (*Preset, error) {
+    for id, g := range c.Presets {
         if g.PresetID == presetID {
-            return g, nil
+            return &c.Presets[id], nil
         }
     }
-    return Preset{}, errors.New( "No such preset" )
+    return nil, errors.New( "No such preset" )
+}
+func (c *SASTCache) GetPresetByName( name string ) (*Preset, error) {
+    for id, g := range c.Presets {
+        if g.Name == name {
+            return &c.Presets[id], nil
+        }
+    }
+    return nil, errors.New( "No such preset" )
 }
 
-func (c *SASTCache) GetRole( roleID uint64 ) (Role, error) {
-    for _, g := range c.Roles {
+func (c *SASTCache) GetRole( roleID uint64 ) (*Role, error) {
+    for id, g := range c.Roles {
         if g.RoleID == roleID {
+            return &c.Roles[id], nil
+        }
+    }
+    return nil, errors.New( "No such role" )
+}
+func (c *SASTCache) GetRoleByName( name string ) (*Role, error) {
+    for id, g := range c.Roles {
+        if g.Name == name {
+            return &c.Roles[id], nil
+        }
+    }
+    return nil, errors.New( "No such role" )
+}
+
+func (c *SASTCache) GetQuery( queryID uint64 ) (*Query, error) {
+    for id, g := range c.Queries {
+        if g.QueryID == queryID {
+            return &c.Queries[id], nil
+        }
+    }
+    return nil, errors.New( "No such query" )
+}
+func (c *SASTCache) GetQueryByNames( language, group, query string ) (*Query, error) {
+    /*for _, g := range c.Queries {
+        if g.QueryID == queryID {
             return g, nil
         }
     }
-    return Role{}, errors.New( "No such role" )
+    return nil, errors.New( "No such query" )*/
+    return nil, errors.New( "Not implemented" )
 }
