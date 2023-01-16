@@ -20,10 +20,22 @@ func init() {
 }
 
 type User struct {
-	UserID uint
+	UserID uint64           `json:"id"`
 	FirstName string
 	LastName string
     UserName string
+    LastLoginDate string
+    Email string
+    RoleIDs    []uint64
+    TeamIDs     []uint64
+}
+
+type Role struct {
+    RoleID uint64           `json:"id"`
+    IsSystemRole bool
+    Name string
+    Description string
+    PermissionIDs []uint64
 }
 
 
@@ -40,48 +52,69 @@ type Link struct {
 type SASTClient struct {
 	httpClient *http.Client
 	authToken string
+    soapToken string
 	baseUrl string
     logger *logrus.Logger
 	CurrentUser *User
 }
 
 type Project struct {
-	ProjectID uint
-	TeamID uint
+	ProjectID uint64            `json:"id"`
+	TeamID uint64
 	Name string
+    Settings    *ProjectSettings
+}
+
+
+type ProjectSettings struct {
+    ProjectID               uint64
+    PresetID                uint64
+    EngineConfigurationID   uint64
+    PostScanAction          int64
+    EmailNotifications      struct {
+        FailedScan      []string
+        BeforeScan      []string
+        AfterScan       []string
+    }
 }
 
 type Team struct {
-	TeamID uint
+	TeamID uint64               `json:"id"`
 	Name string
-    ParentID uint
+    ParentID uint64
 	Projects []Project
 }
 
 type Preset struct {
-	PresetID uint
+	PresetID uint64             `json:"id"`
 	Name string
+    Filled bool
+    Queries []Query
 }
 
 type Query struct {
-	QueryID uint
-	QueryGroupID uint
-	Name string
-	Severity int
-	UpdateTime time.Time
+	Name            string
+	QueryID         uint64      `xml:"QueryId"`
+    CWE             uint64      `xml:"Cwe"`
+	Severity        int
+	PackageID       uint64      `xml:"PackageId"`
+    Language        string
+    Group           string
 }
 
 type QueryGroup struct {
-	QueryGroupID uint
-	Name string
-	Language string
-	Scope string
-	OwningTeamID uint
-	OwningProjectID uint
+	Name        string 
+    PackageID   uint64
+    Queries     []*Query
+	Language    string `xml:"languageName"`
+	OwningProjectID uint64 `xml:"ProjectId"`
+	PackageType string `xml:"PackageTypeName"`
+	OwningTeamID uint64 `xml:"OwningTeam"`
+
 }
 
 type Report struct {
-	ReportID uint   `json:"reportId"`
+	ReportID uint64   `json:"reportId"`
 	Links    Links `json:"links"`
 }
 
@@ -99,26 +132,32 @@ type ReportStatus struct {
 }
 
 type Scan struct {
-	ScanID uint
-	ProjectID uint
-	Status string
+	ScanID uint64       `json:"id"`
+	Project struct {
+        ID          uint64
+        Name        string
+    }
+	Status struct {
+        ID          uint64
+        Name        string
+    }
 	FinishTime time.Time
 }
 
 type PathNode struct {
     FileName    string
-    Line        uint
-    Column      uint
+    Line        uint64
+    Column      uint64
     Name        string
-    Length      uint
+    Length      uint64
 }
 
 
 type ScanResult struct {
     QueryName       string
-    PathID          uint
-    Line            uint
-    Column          uint
+    PathID          uint64
+    Line            uint64
+    Column          uint64
     DetectionDate   string
     Filename        string
     DeepLink        string
@@ -132,11 +171,11 @@ type ScanResult struct {
 }
 
 type ScanResultStatusSummary struct {
-    ToVerify        uint
-    NotExploitable  uint
-    Confirmed       uint
-    ProposedNotExploitable uint
-    Urgent          uint
+    ToVerify        uint64
+    NotExploitable  uint64
+    Confirmed       uint64
+    ProposedNotExploitable uint64
+    Urgent          uint64
 }
 
 type ScanResultSummary struct {
@@ -160,7 +199,10 @@ func (c *SASTClient) createRequest(method, url string, body io.Reader, header *h
 		}
 	}
 
-    request.Header.Set( "Authorization", "Bearer " + c.authToken )
+    if request.Header.Get( "Authorization" ) == "" { 
+        request.Header.Set( "Authorization", "Bearer " + c.authToken )
+    }
+        
     if request.Header.Get("User-Agent") == "" {
         request.Header.Set( "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0" )
     }
@@ -185,27 +227,29 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
 
 
     response, err := c.httpClient.Do(request)
-    defer response.Body.Close()
     if err != nil {
-        resBody,err := ioutil.ReadAll( response.Body )
+        resBody,_ := ioutil.ReadAll( response.Body )
         c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
         c.logger.Errorf("HTTP request failed with error: %s", err)
-        return []byte{}, err
+        return resBody, err
     }
     if response.StatusCode >= 400 {
         resBody,_ := ioutil.ReadAll( response.Body )
         c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
         c.logger.Errorf("HTTP response indicates error: %v", response.Status )
-        return []byte{}, errors.New( "HTTP Response: " + response.Status )
+        return resBody, errors.New( "HTTP Response: " + response.Status )
     }
-
-    resBody, err := ioutil.ReadAll( response.Body )
+    
+    resBody,err := ioutil.ReadAll( response.Body )
 
 	if err != nil {
-		c.logger.Error( "Error reading response body: %s", err )
-		return []byte{}, err
+        if err.Error() == "remote error: tls: user canceled" {
+            c.logger.Warnf( "HTTP request encountered error: %s", err )
+        } else {
+            c.logger.Errorf( "Error reading response body: %s", err )
+        }
+        c.logger.Tracef( "Parsed: %v", string(resBody) )
 	}
-
 
     return resBody, nil
 }
@@ -213,6 +257,20 @@ func (c *SASTClient) sendRequestInternal(method, url string, body io.Reader, hea
 func (c *SASTClient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
     sasturl := fmt.Sprintf("%v/cxrestapi%v", c.baseUrl, url)
     return c.sendRequestInternal(method, sasturl, body, header )
+}
+
+func (c *SASTClient) sendSOAPRequest( method string, body string) ([]byte, error) {
+    sasturl := fmt.Sprintf( "%v/CxWebInterface/Portal/CxWebService.asmx", c.baseUrl )
+    header := http.Header{}
+    SOAPEnvOpen := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>"
+    SOAPEnvClose := "</soap:Body></soap:Envelope>"
+
+    header.Set( "Content-Type", "text/xml; charset=utf-8" )
+    header.Set( "SOAPAction", fmt.Sprintf( "%v/%v", "http://Checkmarx.com", method ) )
+    header.Set( "Authorization", "Bearer " + c.soapToken )
+
+    soap_msg := fmt.Sprintf( "%v<%v xmlns=\"http://Checkmarx.com\">%v</%v>%v", SOAPEnvOpen, method, body, method, SOAPEnvClose )
+    return c.sendRequestInternal( http.MethodPost, sasturl, strings.NewReader( soap_msg ), header )
 }
 
 func (c *SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte ) {
@@ -239,11 +297,12 @@ func (c *SASTClient) get( api string ) ([]byte,error) {
 }
 
 
-func (s Scan) ToString() string {
-	return fmt.Sprintf( "Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.ProjectID, s.Status, s.FinishTime.Format(time.RFC3339) )
+func (s *Scan) String() string {
+	return fmt.Sprintf( "Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.FinishTime.Format(time.RFC3339) )
 }
 
 func getUserToken( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (string, error) {
+    logger.Trace( "Generating user token" )
 	data := url.Values{}
 	data.Set( "username", username )
 	data.Set( "password", password )
@@ -286,11 +345,77 @@ func getUserToken( client *http.Client, base_url string, username string, passwo
 	    return "", err
     }
 
+    if jsonBody["access_token"] == nil {
+        logger.Errorf( "Response does not contain access token: %v", string(resBody) )
+        return "", errors.New( "Response does not contain access token" )
+    } else {
+        return jsonBody["access_token"].(string), nil
+    }
+
     token := jsonBody["access_token"].(string)
     return token, nil
 }
 
-func (c *SASTClient) GetProject ( id uint ) (Project, error) {
+func getSOAPToken( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (string, error) {
+    logger.Trace( "Generating SOAP token" )
+	data := url.Values{}
+	data.Set( "username", username )
+	data.Set( "password", password )
+	data.Set( "grant_type", "password" )
+    data.Set( "scope", "sast_api offline_access" ) 
+	data.Set( "client_secret", "014DF517-39D1-4453-B7B3-9930C563627C" )
+    data.Set( "client_id", "resource_owner_sast_client" )
+	
+	sast_req, err := http.NewRequest(http.MethodPost, base_url + "/cxrestapi/auth/identity/connect/token", strings.NewReader( data.Encode() ))
+	
+	if err != nil {
+		logger.Errorf( "Error: %s", err.Error() )
+		return "", err
+	}
+
+	sast_req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	res, err := client.Do( sast_req );
+	
+
+	if err != nil {
+		logger.Errorf( "Error: %s", err.Error() )
+		return "", err
+	}
+	defer res.Body.Close()
+
+	resBody,err := ioutil.ReadAll( res.Body )
+
+	if err != nil {
+		logger.Errorf( "Error: %s", err.Error() )
+		return "", err
+	}
+
+	var jsonBody map[string]interface{}
+
+	err = json.Unmarshal( resBody, &jsonBody)
+
+	if err != nil {
+        logger.Errorf( "Error: Login failed: %s", err.Error() )
+	    return "", err
+    }
+
+    if jsonBody["access_token"] == nil {
+        logger.Errorf( "Response does not contain access token: %v", string(resBody) )
+        return "", errors.New( "Response does not contain access token" )
+    } else {
+        return jsonBody["access_token"].(string), nil
+    }
+
+    token := jsonBody["access_token"].(string)
+    return token, nil
+}
+
+func (p *Project) String() string {
+    return fmt.Sprintf( "[%d] %v", p.ProjectID, p.Name )
+}
+
+func (c *SASTClient) GetProject( id uint64 ) (Project, error) {
     projects, err := c.GetProjects()
     
     if err != nil {
@@ -305,26 +430,232 @@ func (c *SASTClient) GetProject ( id uint ) (Project, error) {
 	return Project{}, errors.New( "Project ID not found" )
 }
 
-func (c *SASTClient) GetProjects () ([]Project, error) {
+func (c *SASTClient) GetProjects() ([]Project, error) {
+    c.logger.Debug( "Get SAST Projects" )
+    var projects []Project
     response, err := c.get( "/projects" )
     if err != nil {
-        return []Project{},  err
+        return projects,  err
     }
-    return c.parseProjects( response )
+
+    err = json.Unmarshal( response, &projects )
+    c.logger.Tracef( "Retrieved %d projects", len(projects) )
+    return projects, err
 
 }
 
-func (c *SASTClient) GetProjectsInTeam ( teamid uint ) ([]Project, error) {
-
+func (c *SASTClient) GetProjectsInTeam( teamid uint64 ) ([]Project, error) {
+    c.logger.Debug( "Get SAST Projects in team" )
+    var projects []Project
     response, err := c.get( fmt.Sprintf( "/projects?teamId=%d", teamid ) )
     if err != nil {
-        return []Project{}, err
+        return projects, err
     }
-    return c.parseProjects( response )
+
+    err = json.Unmarshal( response, &projects )
+    c.logger.Tracef( "Retrieved %d projects", len(projects) )
+    return projects, err
 }
 
 
-func (c *SASTClient) RequestNewReport(scanID uint, reportType string) (Report, error) {
+
+func (c *SASTClient) GetProjectSettings( projectid uint64 ) (ProjectSettings, error) {
+    var responseStruct struct {
+        Project struct {
+            ID      uint64
+        }
+        Preset struct {
+            ID      uint64
+        }
+        EngineConfiguration struct {
+            ID      uint64
+        }
+        PostScanAction interface{}
+        EmailNotifications      struct {
+            FailedScan      []string
+            BeforeScan      []string
+            AfterScan       []string
+        }
+    }
+
+    var settings ProjectSettings
+
+    c.logger.Debug( "Get Project Settings for project ", projectid )
+
+    response, err := c.get( fmt.Sprintf( "/sast/scanSettings/%d", projectid ) )
+    if err != nil {
+        return settings,  err
+    }
+
+    err = json.Unmarshal( response, &responseStruct )
+    if err != nil {
+        return settings, err
+    }
+
+    settings.ProjectID = responseStruct.Project.ID
+    settings.PresetID = responseStruct.Preset.ID
+    settings.EngineConfigurationID = responseStruct.EngineConfiguration.ID
+    
+    if responseStruct.PostScanAction == nil {
+        settings.PostScanAction = -1
+    } else {
+        settings.PostScanAction = responseStruct.PostScanAction.(int64)
+    }
+
+    settings.EmailNotifications.FailedScan = responseStruct.EmailNotifications.FailedScan
+    settings.EmailNotifications.BeforeScan = responseStruct.EmailNotifications.BeforeScan
+    settings.EmailNotifications.AfterScan = responseStruct.EmailNotifications.AfterScan
+
+    return settings, err
+}
+
+func (c *SASTClient) GetScanPresetSOAP( scanid uint64) (Preset, error) {
+    var xmlResponse struct {
+        XMLName     xml.Name `xml:"Envelope"`
+        Body struct {
+            XMLName xml.Name `xml:"Body"`
+            GetScanSummaryResponse struct {
+                XMLName xml.Name `xml:"GetScanSummaryResponse"`
+                GetScanSummaryResult struct {
+                    XMLName xml.Name `xml:"GetScanSummaryResult"`
+                    IsSuccesfull       bool `xml:"IsSuccesfull"`
+                    Preset              string
+                    ErrorMessage        string
+                    LOC                 uint64    
+                }
+            }
+        } 
+    }
+
+    c.logger.Debug( "Get SAST Scan Preset SOAP" )
+    response, err := c.sendSOAPRequest( "GetScanSummary", fmt.Sprintf( "<i_SessionID></i_SessionID><i_ScanID>%d</i_ScanID><auditEvent>0</auditEvent>", scanid ) )
+    if err != nil {
+        return Preset{}, err
+    }
+
+    err = xml.Unmarshal( response, &xmlResponse )
+    if err != nil {
+        c.logger.Errorf( "Failed to parse SOAP response: %s", err )
+        c.logger.Tracef( "Parsed from: %v", string(response) )
+        return Preset{}, err
+    }
+
+    result := xmlResponse.Body.GetScanSummaryResponse.GetScanSummaryResult
+    
+    if result.IsSuccesfull != true {
+        c.logger.Errorf( "SOAP request error: %v", result.ErrorMessage )
+        c.logger.Tracef( "Full response: %v", string(response) )
+        if result.ErrorMessage == "Invalid_Token" {
+            c.logger.Errorf( " - SOAP Token %v is not valid?", shortenGUID( c.soapToken ) )
+        }
+        return Preset{}, errors.New( fmt.Sprintf( "SOAP request failed: %v", result.ErrorMessage ) )
+    }
+
+    presets, err := c.GetPresets()
+    if err != nil {
+        c.logger.Errorf( "Failed to retrieve list of presets: %s", err )
+        return Preset{}, err
+    }
+
+    for _, p := range presets {
+        if p.Name == result.Preset {
+            return p, nil
+        }
+    }
+
+    return Preset{}, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+}
+
+func (c *SASTClient) GetQueriesSOAP() ([]QueryGroup, []Query, error) {
+    var xmlResponse struct {
+        XMLName     xml.Name `xml:"Envelope"`
+        Body struct {
+            XMLName xml.Name `xml:"Body"`
+            Response struct {
+                XMLName xml.Name `xml:"GetQueryCollectionResponse"`
+                Result struct {
+                    XMLName xml.Name `xml:"GetQueryCollectionResult"`
+                    IsSuccesfull       bool `xml:"IsSuccesfull"`                    
+                    ErrorMessage        string
+                    QueryGroupsList struct {
+                        XMLName xml.Name `xml:"QueryGroups"`
+                        QueryGroups []struct {
+                            Name            string      
+                            PackageId       uint64
+                            QueriesList struct {
+                                XMLName xml.Name 
+                                Queries     []Query `xml:"CxWSQuery"`
+                            } `xml:"Queries"`
+                            LanguageName    string
+                            PackageTypeName string
+                            ProjectID       uint64
+                            OwningTeam      uint64
+                        } `xml:"CxWSQueryGroup"`  
+                    }
+                }
+            }
+        } 
+    }
+
+    Queries := make( []Query, 0 )
+    QueryGroups := make( []QueryGroup, 0 )
+
+    c.logger.Debug( "Get SAST Query Collection SOAP" )
+    response, err := c.sendSOAPRequest( "GetQueryCollection", "<i_SessionID></i_SessionID>" )
+    if err != nil {
+        return QueryGroups, Queries, err
+    }
+
+    err = xml.Unmarshal( response, &xmlResponse )
+    if err != nil {
+        c.logger.Errorf( "Failed to parse SOAP response: %s", err )
+        c.logger.Tracef( "Parsed from: %v", string(response) )
+        return QueryGroups, Queries, err
+    }
+
+    if xmlResponse.Body.Response.Result.IsSuccesfull != true {
+        c.logger.Errorf( "SOAP request error: %v", xmlResponse.Body.Response.Result.ErrorMessage )
+        c.logger.Infof( "Full response: %v", string(response) )
+        return QueryGroups, Queries, errors.New( fmt.Sprintf( "SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage ) )
+    }
+
+    for _, g := range xmlResponse.Body.Response.Result.QueryGroupsList.QueryGroups {
+        for _, q := range g.QueriesList.Queries {
+            q.Language = g.LanguageName
+            q.Group = g.Name
+            Queries = append( Queries, q )
+        }
+    }
+    c.logger.Debugf( "Parsed %d queries", len( Queries ) )
+
+    for _, g := range xmlResponse.Body.Response.Result.QueryGroupsList.QueryGroups {
+        qlist := make( []*Query, 0 )
+        for _, q := range g.QueriesList.Queries {
+            cq := c.GetQueryByID( q.QueryID, &Queries )
+            qlist = append( qlist, cq )
+        }
+
+        QueryGroups = append( QueryGroups, QueryGroup{ g.Name, g.PackageId, qlist, g.LanguageName, g.ProjectID, g.PackageTypeName, g.OwningTeam } )
+    }
+    c.logger.Debugf( "Parsed %d query groups", len(QueryGroups) )
+
+    return QueryGroups, Queries, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+}
+
+func (c *SASTClient) GetQueryByID( qid uint64, queries *[]Query ) *Query {
+    for id, q := range *queries {
+        if q.QueryID == qid {
+            return &(*queries)[id]
+        }
+    }
+    return nil
+}
+func (q *Query) String() string {
+    return fmt.Sprintf( "[%d] %v -> %v -> %v", q.QueryID, q.Language, q.Group, q.Name )
+}
+
+
+func (c *SASTClient) RequestNewReport(scanID uint64, reportType string) (Report, error) {
 	report := Report{}
 	jsonData := map[string]interface{}{
 		"scanId":     scanID,
@@ -347,7 +678,7 @@ func (c *SASTClient) RequestNewReport(scanID uint, reportType string) (Report, e
 	return report, err
 }
 
-func (c *SASTClient) GetReportStatus(reportID uint) (ReportStatusResponse, error) {
+func (c *SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, error) {
 	var response ReportStatusResponse
 
 	header := http.Header{}
@@ -362,7 +693,7 @@ func (c *SASTClient) GetReportStatus(reportID uint) (ReportStatusResponse, error
 	return response, nil
 }
 
-func (c *SASTClient) DownloadReport(reportID uint) ([]byte, error) {
+func (c *SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
 	header := http.Header{}
 	header.Set("Accept", "application/json")
 	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%d", reportID), nil, header)
@@ -373,7 +704,7 @@ func (c *SASTClient) DownloadReport(reportID uint) ([]byte, error) {
 }
 
 // convenience function
-func (c *SASTClient) GenerateAndDownloadReport( scanID uint, reportType string ) ([]byte, error) {
+func (c *SASTClient) GenerateAndDownloadReport( scanID uint64, reportType string ) ([]byte, error) {
 	var reportBytes []byte
     report, err := c.RequestNewReport( scanID, reportType )
 	
@@ -430,8 +761,8 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]ScanResult, e
         ScanStart                string   `xml:"ScanStart,attr"`
         Preset                   string   `xml:"Preset,attr"`
         ScanTime                 string   `xml:"ScanTime,attr"`
-        LinesOfCodeScanned       uint      `xml:"LinesOfCodeScanned,attr"`
-        FilesScanned             uint      `xml:"FilesScanned,attr"`
+        LinesOfCodeScanned       uint64      `xml:"LinesOfCodeScanned,attr"`
+        FilesScanned             uint64      `xml:"FilesScanned,attr"`
         ReportCreationTime       string   `xml:"ReportCreationTime,attr"`
         Team                     string   `xml:"Team,attr"`
         CheckmarxVersion         string   `xml:"CheckmarxVersion,attr"`
@@ -446,15 +777,15 @@ func (c *SASTClient) GetResultsFromXML( xmlReportData []byte  ) ([]ScanResult, e
                 State         string   `xml:"state,attr"`
                 Status        string   `xml:"Status,attr"`
                 Filename      string    `xml:"FileName,attr"`
-                Line          uint      `xml:"Line,attr"`
-                Column        uint      `xml:"Column,attr"`
+                Line          uint64      `xml:"Line,attr"`
+                Column        uint64      `xml:"Column,attr"`
                 DeepLink      string    `xml:"DeepLink,attr"`
                 DetectionDate string    `xml:"DetectionDate,attr"`
                 Severity      string   `xml:"Severity,attr"`
                 FalsePositive string   `xml:"FalsePositive,attr"`
 
                 Path           struct {
-                    PathID  uint `xml:"PathId,attr"`
+                    PathID  uint64 `xml:"PathId,attr"`
                     SourceMethod string `xml:"SourceMethod,attr"`
                     DestinationMethod string `xml:"DestinationMethod,attr"`
                     SimilarityID int64 `xml:"SimilarityId,attr"`
@@ -547,7 +878,7 @@ func (c *SASTClient) GetScanResultSummary( results []ScanResult ) ScanResultSumm
     return summary
 }
 
-func (s ScanResultStatusSummary) Total() uint {
+func (s ScanResultStatusSummary) Total() uint64 {
     return s.ToVerify + s.Confirmed + s.Urgent + s.ProposedNotExploitable + s.NotExploitable
 }
 func (s ScanResultStatusSummary) String() string {
@@ -564,265 +895,219 @@ func (s ScanResultSummary) String() string {
                 s.High.NotExploitable + s.Medium.NotExploitable + s.Low.NotExploitable + s.Information.NotExploitable ) )
 }
 
-func (c *SASTClient) GetScan( scanid uint ) (Scan,error) {
-	c.logger.Debugf( "Get scan %d", scanid )
-    response, err := c.get( fmt.Sprintf( "/sast/scans/%d", scanid) ) 
-    if err != nil {
-        return Scan{}, err
-    }
-
-    return c.parseScan( response )
-}
-
-func (c *SASTClient) GetLastScan ( projectid uint ) (Scan, error) {
+func (c *SASTClient) GetScan( scanid uint64 ) (Scan,error) {
+	c.logger.Debugf( "Get SAST scan %d", scanid )
     var scan Scan
-    response, err := c.get( fmt.Sprintf( "/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid ) )
+
+    response, err := c.get( fmt.Sprintf( "/sast/scans/%d", scanid) ) 
     if err != nil {
         return scan, err
     }
 
-	scans,err := c.parseScans( response )
+    err = json.Unmarshal( response, &scan )
+    return scan, err
+}
+
+func (c *SASTClient) GetLastScan ( projectid uint64 ) (Scan, error) {
+    var scans []Scan
+    response, err := c.get( fmt.Sprintf( "/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid ) )
+    if err != nil {
+        return Scan{}, err
+    }
+
+	err = json.Unmarshal( response, &scans)
 	if err != nil {
-		return scan, err
+		return Scan{}, err
 	}
+
+    if len(scans) == 0 {
+        return Scan{}, errors.New( fmt.Sprintf("No scans found in project %d", projectid) )
+    }
+
 	return scans[0], nil
 }
 
-func (c *SASTClient) parseScanFromInterface( single_scan *map[string]interface{} ) (Scan, error) {
-	var scan Scan
-
-	scan.ScanID = uint( (*single_scan)["id"].(float64))
-
-	project := (*single_scan)["project"]
-	scan.ProjectID = uint(project.(map[string]interface{})["id"].(float64))
-
-	status := (*single_scan)["status"]
-	scan.Status = status.(map[string]interface{})["name"].(string)
-
-	dnt := (*single_scan)["dateAndTime"]
-
-	var err error
-	scan.FinishTime, err = time.Parse(time.RFC3339, dnt.(map[string]interface{})["finishedOn"].(string) + "Z" )
-	if err != nil {
-		c.logger.Error( "Error parsing date/time: " + err.Error() )		
-	}
-
-	return scan, err
-}
-
-func (c *SASTClient) parseScan( input []byte ) (Scan, error) {
-    var scan Scan
-	c.logger.Trace( "Parsing single scan from: " + string(input) )
-	var single_scan map[string]interface{}
-	err := json.Unmarshal( input, &single_scan )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-		c.logger.Error( "Input was: " + string(input) )
-		return scan, err
-	} else {		
-		return c.parseScanFromInterface( &single_scan )
-	}
-}
-
-func (c *SASTClient) parseScans( input []byte ) ([]Scan, error) {
-	c.logger.Trace( "Parsing scans from: " + string(input) )
-
-	var scans []map[string]interface{}
-
-	var scanList []Scan
-
-	err := json.Unmarshal( input, &scans )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-		c.logger.Error( "Input was: " + string(input) )
-        return scanList, err
-	} else {
-		scanList = make([]Scan, len(scans) )
-		//id := 0
-		for id, scan := range scans {
-			scanList[id], err = c.parseScanFromInterface( &scan )
-		}
-	}
-
-	return scanList, nil
-}
-
-func (c *SASTClient) parseProjects( input []byte ) ([]Project, error) {
-	var projects []interface{}
-
-	var projectList []Project
-
-	c.logger.Trace( "Parsing projects from: " + string(input) )
-	err := json.Unmarshal( input, &projects )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-        return projectList, err
-	} else {
-		projectList = make([]Project, len(projects) )
-		for id := range projects {
-			projectList[id].ProjectID = uint(projects[id].(map[string]interface{})["id"].(float64))
-			projectList[id].TeamID = uint(projects[id].(map[string]interface{})["teamId"].(float64))
-			projectList[id].Name = projects[id].(map[string]interface{})["name"].(string)
-		}
-	}
-
-	return projectList, nil
-}
 
 
 func (t Team) HasProjects() bool {
 	return len(t.Projects) > 0
 }
 
-
-func (c *SASTClient) GetTeams () ([]Team, error) {
-    response, err := c.get( "/auth/teams" )
-    if err != nil {
-        return []Team{}, err
-    }
-
-    return c.parseTeams( response )
+// Teams
+func (t *Team) String() string {
+    return fmt.Sprintf( "[%d] %v", t.TeamID, t.Name )
 }
 
-func (c *SASTClient) parseTeams( input []byte ) ([]Team, error) {
-	var teams []interface{}
+func (c *SASTClient) GetTeams () ([]Team, error) {
+    c.logger.Debug( "Get SAST Teams" )
+    var teams []Team
+    response, err := c.get( "/auth/teams" )
+    if err != nil {
+        return teams, err
+    }
 
-	var teamList []Team
+    err = json.Unmarshal( response, &teams )
+    return teams, err
+}
 
-	c.logger.Trace( "Parsing teams from input: " + string(input) )
-	err := json.Unmarshal( input, &teams )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-        return teamList, err
-	} else {
-		teamList = make([]Team, len(teams) )
-		for id := range teams {
-			teamList[id].TeamID = uint(teams[id].(map[string]interface{})["id"].(float64))
-			teamList[id].Name = teams[id].(map[string]interface{})["fullName"].(string)
-            teamList[id].ParentID = uint(teams[id].(map[string]interface{})["parentId"].(float64))
-		}
-	}
 
-	return teamList, nil
+
+// Users
+func (u *User) String() string {
+    return fmt.Sprintf( "[%d] %v %v (%v)", u.UserID, u.FirstName, u.LastName, u.Email )
 }
 
 func (c *SASTClient) GetUsers () ([]User, error) {
+    c.logger.Debug( "Get SAST Users" )
+    var users []User
     response, err := c.get( "/auth/users" )
     if err != nil {
-        return []User{}, err
+        return users, err
     }
-    return c.parseUsers( response )
+
+    err = json.Unmarshal( response, &users )
+    return users, err
 }
-
-func (c *SASTClient) parseUserFromInterface( single_user *map[string]interface{} ) User {
-	user := User{}
-	user.UserID = uint( (*single_user)["id"].(float64) )
-	user.FirstName = (*single_user)["firstName"].(string)
-	user.LastName = (*single_user)["lastName"].(string)
-    user.UserName = (*single_user)["userName"].(string)
-	return user
-}
-
-func (c *SASTClient) parseUsers( input []byte ) ([]User, error) {
-	var users []map[string]interface{}
-	var userList []User
-
-	c.logger.Trace( "Parsing users from input: " + string(input) )
-	err := json.Unmarshal( input, &users )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-        return userList, err
-	} else {
-		userList = make([]User, len(users) )
-		for id := range users {
-			userList[id] = c.parseUserFromInterface( &(users[id]) )
-		}
-	}
-
-	return userList, nil
-}
-
 
 func (c *SASTClient) GetCurrentUser () (User, error) {
-	c.logger.Trace( "SAST Get User Info" )
+	c.logger.Trace( "Get SAST User Info" )
+    var user User
 	response, err := c.get( "/auth/MyProfile" )
     if err != nil {
-        return User{}, err
+        return user, err
     }
 
-	var jsonBody map[string]interface{}
-
-	err = json.Unmarshal( response, &jsonBody)
-
+	err = json.Unmarshal( response, &user)
+    return user, err
     //c.logger.Warning( "Parsing input: " + strig(response) )
+    /*
 	if err == nil {
 		return User {
-			uint(jsonBody["id"].(float64)),
+			uint64(jsonBody["id"].(float64)),
 			jsonBody["firstName"].(string),
 			jsonBody["lastName"].(string),
             jsonBody["userName"].(string),
+
 		}, nil
 	} else {
 		c.logger.Error( "Login failed: " + err.Error() )
         c.logger.Warning( "Failed while parsing response: " + string(response) )
         return User{}, err
-	}
+	}*/
 }
 
-func (c *SASTClient) parsePresetFromInterface( single_preset *map[string]interface{} ) Preset {
-	preset := Preset{}
-	preset.PresetID = uint( (*single_preset)["id"].(float64) )
-	preset.Name = (*single_preset)["name"].(string)
-	return preset
+
+// Roles
+func (r *Role) String() string {
+    return fmt.Sprintf( "[%d] %v", r.RoleID, r.Name )
 }
 
-func (c *SASTClient) parsePresets( input []byte ) ([]Preset, error) {
-	var presets []map[string]interface{}
-	var presetList []Preset
+func (c *SASTClient) GetRoles () ([]Role, error) {
+    c.logger.Debug( "Get SAST Roles" )
+    var roles []Role
+    response, err := c.get( "/auth/roles" )
+    if err != nil {
+        return roles, err
+    }
 
-	c.logger.Trace( "Parsing presets from input: " + string(input) )
-	err := json.Unmarshal( input, &presets )
-	if err != nil {
-		c.logger.Error("Error: " + err.Error() )
-        return presetList, err
-	} else {
-		presetList = make([]Preset, len(presets) )
-		for id := range presets {
-			presetList[id] = c.parsePresetFromInterface( &(presets[id]) )
-		}
-	}
+    err = json.Unmarshal( response, &roles )
+    return roles, err
+}
 
-	return presetList, nil
+
+// Presets
+func (p *Preset) String() string {
+    return fmt.Sprintf( "[%d] %v", p.PresetID, p.Name )
 }
 
 func (c *SASTClient) GetPresets () ([]Preset, error) {
+    c.logger.Debug( "Get SAST Presets" )
+    var presets []Preset
     response, err := c.get( "/sast/presets" )
     if err != nil {
-        return []Preset{}, err
+        return presets, err
     }
-    return c.parsePresets( response )
+
+    err = json.Unmarshal( response, &presets )
+    return presets, err
 }
 
-/* no rest endpoint for this?
-func (c *SASTClient) GetQueries () *[]Query {
-	if len( c.Queries ) == 0 {
-		//c.Queries = c.parseQueries( c.get( "/" )	)
-	}
+func (c *SASTClient) GetPresetContents(p *Preset, queries *[]Query ) error {
+    c.logger.Debugf( "Fetching contents for preset %v", p.PresetID )
 
-	return &c.Queries
-}*/
+    if len(*queries) == 0 {
+        return errors.New( "Queries list is empty" )
+    }
+
+    response, err := c.sendRequest( http.MethodGet, fmt.Sprintf( "/sast/presets/%d", p.PresetID ), nil, nil )
+    if err != nil {
+        return err
+    }
+
+    var PresetContents struct {
+        ID              uint64
+        Name            string
+        Owner           string
+        QueryIDs        []uint64
+    }
+
+    err = json.Unmarshal( response, &PresetContents )
+    if err != nil {
+        return errors.Wrap( err, "Failed to parse preset contents" )
+    }
+
+    c.logger.Tracef( "Parsed preset %v with %d queries", PresetContents.Name, len( PresetContents.QueryIDs ) )
+
+    p.Queries = make( []Query, 0 )
+    for _, qid := range PresetContents.QueryIDs {
+        q := c.GetQueryByID( qid, queries )
+        if q != nil {
+            p.Queries = append( p.Queries, *q )
+            c.logger.Tracef( " - linked query: %v", q.String() )
+        }
+    }
+
+    p.Filled = true
+    return nil
+}
 
 
-func (c *SASTClient) ToString() string {
-	return c.baseUrl + " with token: " + c.authToken[:4] + "..." + c.authToken[ len(c.authToken) - 4:]
+// Links to objects in the portal
+func (c *SASTClient) ProjectLink( p *Project )  string {
+    return fmt.Sprintf( "%v/CxWebClient/ProjectScans.aspx?id=%d", c.baseUrl, p.ProjectID )
+}
+
+func (c *SASTClient) PresetLink( p *Preset )  string {
+    return fmt.Sprintf( "%v/CxWebClient/Presets.aspx?id=%d", c.baseUrl, p.PresetID )
+}
+
+func (c *SASTClient) UserLink( u *User )  string {
+    return fmt.Sprintf( "%v/CxRestAPI/auth/#/users?id=%d", c.baseUrl, u.UserID ) // this link doesn't actually work, just takes you to the main page
+}
+
+func (c *SASTClient) RoleLink( r *Role )  string {
+    return fmt.Sprintf( "%v/CxRestAPI/auth/#/roles/%d", c.baseUrl, r.RoleID )
+}
+
+func (c *SASTClient) TeamLink( t *Team )  string {
+    return fmt.Sprintf( "%v/CxRestAPI/auth/#/teams/id=%d", c.baseUrl, t.TeamID ) // this link doesn't actually work, just takes you to the main page
+}
+
+func (c *SASTClient) String() string {
+	return c.baseUrl + " with token: " + shortenGUID( c.authToken )
 }
 
 func (c *SASTClient) GetToken() string {
     return c.authToken
 }
 
-func New( client *http.Client, base_url string, token string, logger *logrus.Logger ) *SASTClient {
-	cli := &SASTClient{ client, token, base_url, logger, nil }
+func shortenGUID( guid string ) string {
+    return fmt.Sprintf( "%v..%v", guid[:2], guid[len(guid)-2:] )
+}
+
+
+func New( client *http.Client, base_url string, usertoken string, soaptoken string, logger *logrus.Logger ) *SASTClient {
+	cli := &SASTClient{ client, usertoken, soaptoken, base_url, logger, nil }
 
 	user, err := cli.GetCurrentUser()
     cli.CurrentUser = &user
@@ -835,11 +1120,19 @@ func New( client *http.Client, base_url string, token string, logger *logrus.Log
 }
 
 func NewTokenClient( client *http.Client, base_url string, username string, password string, logger *logrus.Logger ) (*SASTClient, error) {
-	token, err := getUserToken( client, base_url, username, password, logger )
+	usertoken, err := getUserToken( client, base_url, username, password, logger )
     if err != nil {
         logger.Fatal( "Error initializing SAST client: " + err.Error() )
         return nil, err
     }
 
-	return New( client, base_url, token, logger ), nil
+	soaptoken, err := getSOAPToken( client, base_url, username, password, logger )
+    if err != nil {
+        logger.Fatal( "Error initializing SAST client: " + err.Error() )
+        return nil, err
+    }
+
+    logger.Infof( "Generated user token %v, soap token %v", shortenGUID( usertoken ), shortenGUID( soaptoken ) )
+
+	return New( client, base_url, usertoken, soaptoken, logger ), nil
 }
