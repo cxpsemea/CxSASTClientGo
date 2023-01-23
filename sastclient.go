@@ -36,6 +36,10 @@ func (c *SASTClient) createRequest(method, url string, body io.Reader, header *h
 		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0")
 	}
 
+	if request.Header.Get("Content-Type") == "" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+
 	return request, nil
 }
 

@@ -32,21 +32,6 @@ func (c *SASTClient) GetCurrentUser() (User, error) {
 
 	err = json.Unmarshal(response, &user)
 	return user, err
-	//c.logger.Warning( "Parsing input: " + strig(response) )
-	/*
-			if err == nil {
-				return User {
-					uint64(jsonBody["id"].(float64)),
-					jsonBody["firstName"].(string),
-					jsonBody["lastName"].(string),
-		            jsonBody["userName"].(string),
-
-				}, nil
-			} else {
-				c.logger.Error( "Login failed: " + err.Error() )
-		        c.logger.Warning( "Failed while parsing response: " + string(response) )
-		        return User{}, err
-			}*/
 }
 
 func (c *SASTClient) UserLink(u *User) string {

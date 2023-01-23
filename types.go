@@ -16,23 +16,18 @@ type SASTClient struct {
 	CurrentUser *User
 }
 
-type User struct {
-	UserID        uint64 `json:"id"`
-	FirstName     string
-	LastName      string
-	UserName      string
-	LastLoginDate string
-	Email         string
-	RoleIDs       []uint64
-	TeamIDs       []uint64
+type AuthenticationProvider struct {
+	ID           uint64
+	Name         string
+	ProviderID   uint64
+	ProviderType string
+	IsExternal   bool
+	Active       bool
 }
 
-type Role struct {
-	RoleID        uint64 `json:"id"`
-	IsSystemRole  bool
-	Name          string
-	Description   string
-	PermissionIDs []uint64
+type Link struct {
+	Rel string `json:"rel"`
+	URI string `json:"uri"`
 }
 
 type Links struct {
@@ -40,9 +35,58 @@ type Links struct {
 	Status Link `json:"status"`
 }
 
-type Link struct {
-	Rel string `json:"rel"`
-	URI string `json:"uri"`
+type OIDCClaim struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+type OIDCClient struct {
+	ID                                uint64      `json:"id"`
+	UpdateAccessTokenClaimsOnRefresh  bool        `json:"updateAccessTokenClaimsOnRefresh"`
+	AccessTokenType                   uint64      `json:"accessTokenType"`
+	IncludeJwtID                      bool        `json:"includeJwtId"`
+	AlwaysIncludeUserClaimsInIDToken  bool        `json:"alwaysIncludeUserClaimsInIdToken"`
+	ClientID                          string      `json:"clientId"`
+	ClientName                        string      `json:"clientName"`
+	AllowOfflineAccess                bool        `json:"allowOfflineAccess"`
+	ClientSecrets                     []string    `json:"clientSecrets"`
+	AllowedGrantTypes                 []string    `json:"allowedGrantTypes"`
+	AllowedScopes                     []string    `json:"allowedScopes"`
+	Enabled                           bool        `json:"enabled"`
+	RequireClientSecret               bool        `json:"requireClientSecret"`
+	RedirectUris                      []string    `json:"redirectUris"`
+	PostLogoutRedirectUris            []string    `json:"postLogoutRedirectUris"`
+	FrontChannelLogoutUri             *string     `json:"frontChannelLogoutUri"`
+	FrontChannelLogoutSessionRequired bool        `json:"frontChannelLogoutSessionRequired"`
+	BackChannelLogoutUri              *string     `json:"backChannelLogoutUri"`
+	BackChannelLogoutSessionRequired  bool        `json:"backChannelLogoutSessionRequired"`
+	IdentityTokenLifetime             uint64      `json:"identityTokenLifetime"`
+	AccessTokenLifetime               uint64      `json:"accessTokenLifetime"`
+	AuthorizationCodeLifetime         uint64      `json:"authorizationCodeLifetime"`
+	AbsoluteRefreshTokenLifetime      uint64      `json:"absoluteRefreshTokenLifetime"`
+	SlidingRefreshTokenLifetime       uint64      `json:"slidingRefreshTokenLifetime"`
+	RefreshTokenUsage                 uint64      `json:"refreshTokenUsage"`
+	RefreshTokenExpiration            uint64      `json:"refreshTokenExpiration"`
+	AllowedCorsOrigins                []string    `json:"allowedCorsOrigins"`
+	AllowAccessTokensViaBrowser       bool        `json:"allowAccessTokensViaBrowser"`
+	Claims                            []OIDCClaim `json:"claims"`
+	ClientClaimsPrefix                string      `json:"clientClaimsPrefix"`
+	RequirePkce                       bool        `json:"requirePkce"`
+}
+
+type PathNode struct {
+	FileName string
+	Line     uint64
+	Column   uint64
+	Name     string
+	Length   uint64
+}
+
+type Preset struct {
+	PresetID uint64 `json:"id"`
+	Name     string
+	Filled   bool
+	Queries  []Query
 }
 
 type Project struct {
@@ -64,26 +108,12 @@ type ProjectSettings struct {
 	}
 }
 
-type Team struct {
-	TeamID   uint64 `json:"id"`
-	Name     string
-	ParentID uint64
-	Projects []Project
-}
-
-type Preset struct {
-	PresetID uint64 `json:"id"`
-	Name     string
-	Filled   bool
-	Queries  []Query
-}
-
 type Query struct {
 	Name      string
-	QueryID   uint64 `xml:"QueryId"`
+	QueryID   uint64 `xml:"QueryID"`
 	CWE       uint64 `xml:"Cwe"`
 	Severity  int
-	PackageID uint64 `xml:"PackageId"`
+	PackageID uint64 `xml:"PackageID"`
 	Language  string
 	Group     string
 }
@@ -93,13 +123,13 @@ type QueryGroup struct {
 	PackageID       uint64
 	Queries         []*Query
 	Language        string `xml:"languageName"`
-	OwningProjectID uint64 `xml:"ProjectId"`
+	OwningProjectID uint64 `xml:"ProjectID"`
 	PackageType     string `xml:"PackageTypeName"`
 	OwningTeamID    uint64 `xml:"OwningTeam"`
 }
 
 type Report struct {
-	ReportID uint64 `json:"reportId"`
+	ReportID uint64 `json:"reportID"`
 	Links    Links  `json:"links"`
 }
 
@@ -116,6 +146,14 @@ type ReportStatus struct {
 	Value string `json:"value"`
 }
 
+type Role struct {
+	RoleID        uint64 `json:"id"`
+	IsSystemRole  bool
+	Name          string
+	Description   string
+	PermissionIDs []uint64
+}
+
 type Scan struct {
 	ScanID  uint64 `json:"id"`
 	Project struct {
@@ -127,14 +165,6 @@ type Scan struct {
 		Name string
 	}
 	FinishTime time.Time
-}
-
-type PathNode struct {
-	FileName string
-	Line     uint64
-	Column   uint64
-	Name     string
-	Length   uint64
 }
 
 type ScanResult struct {
@@ -167,4 +197,22 @@ type ScanResultSummary struct {
 	Medium      ScanResultStatusSummary
 	Low         ScanResultStatusSummary
 	Information ScanResultStatusSummary
+}
+
+type Team struct {
+	TeamID   uint64 `json:"id"`
+	Name     string
+	ParentID uint64
+	Projects []Project
+}
+
+type User struct {
+	UserID        uint64 `json:"id"`
+	FirstName     string
+	LastName      string
+	UserName      string
+	LastLoginDate string
+	Email         string
+	RoleIDs       []uint64
+	TeamIDs       []uint64
 }
