@@ -90,10 +90,19 @@ type Preset struct {
 }
 
 type Project struct {
-	ProjectID uint64 `json:"id"`
-	TeamID    uint64
-	Name      string
-	Settings  *ProjectSettings
+	ProjectID  uint64 `json:"id"`
+	TeamID     uint64
+	Name       string
+	IsPublic   bool
+	SourceType string
+	Settings   *ProjectSettings
+	Repo       *ProjectRepo
+}
+
+type ProjectRepo struct {
+	URL    string
+	Branch string
+	UseSSH bool
 }
 
 type ProjectSettings struct {
