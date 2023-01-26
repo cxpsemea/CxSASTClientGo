@@ -162,12 +162,12 @@ func (c *SASTCache) Refresh(client *SASTClient) error {
 		return err
 	}
 
-	if client.soapToken != "" {
-		err = c.RefreshQueries(client)
-		if err != nil {
-			return err
-		}
+	//if client.soapToken != "" {
+	err = c.RefreshQueries(client)
+	if err != nil {
+		return err
 	}
+	//}
 
 	err = c.RefreshPresets(client)
 	if err != nil {
@@ -199,6 +199,15 @@ func (c *SASTCache) GetTeamByName(name string) (*Team, error) {
 		}
 	}
 	return nil, errors.New("No such team")
+}
+func (c *SASTCache) GetTeamsByParentID(parentID uint64) []*Team {
+	children := make([]*Team, 0)
+	for id, t := range c.Teams {
+		if t.ParentID == parentID {
+			children = append(children, &(c.Teams[id]))
+		}
+	}
+	return children
 }
 
 func (c *SASTCache) GetUser(userID uint64) (*User, error) {
@@ -233,6 +242,15 @@ func (c *SASTCache) GetProjectByName(name string) (*Project, error) {
 		}
 	}
 	return nil, errors.New("No such project")
+}
+func (c *SASTCache) GetProjectsByTeamID(teamID uint64) []*Project {
+	projects := make([]*Project, 0)
+	for id, p := range c.Projects {
+		if p.TeamID == teamID {
+			projects = append(projects, &(c.Projects[id]))
+		}
+	}
+	return projects
 }
 
 func (c *SASTCache) GetPreset(presetID uint64) (*Preset, error) {

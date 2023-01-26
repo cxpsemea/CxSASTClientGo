@@ -46,7 +46,7 @@ func (c *SASTClient) GetScanPresetSOAP(scanid uint64) (Preset, error) {
 		c.logger.Errorf("SOAP request error: %v", result.ErrorMessage)
 		c.logger.Tracef("Full response: %v", string(response))
 		if result.ErrorMessage == "Invalid_Token" {
-			c.logger.Errorf(" - SOAP Token %v is not valid?", ShortenGUID(c.soapToken))
+			c.logger.Errorf(" - SOAP Token is not valid")
 		}
 		return Preset{}, errors.New(fmt.Sprintf("SOAP request failed: %v", result.ErrorMessage))
 	}

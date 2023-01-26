@@ -8,9 +8,10 @@ import (
 )
 
 type SASTClient struct {
-	httpClient  *http.Client
-	authToken   string
-	soapToken   string
+	restClient *http.Client
+	soapClient *http.Client
+	//authToken   string
+	//soapToken   string
 	baseUrl     string
 	logger      *logrus.Logger
 	CurrentUser *User
