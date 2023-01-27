@@ -2,7 +2,6 @@ package CxSASTClientGo
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
 )
 
 func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
@@ -63,7 +61,7 @@ func (c *SASTClient) sendRequestInternal(client *http.Client, method, url string
 		c.logger.Errorf("HTTP request failed with error: %s", err)
 		var resBody []byte
 
-		if response.Body != nil {
+		if response != nil && response.Body != nil {
 			resBody, _ = io.ReadAll(response.Body)
 		}
 		c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
@@ -71,7 +69,10 @@ func (c *SASTClient) sendRequestInternal(client *http.Client, method, url string
 		return resBody, err
 	}
 	if response.StatusCode >= 400 {
-		resBody, _ := io.ReadAll(response.Body)
+		var resBody []byte
+		if response != nil && response.Body != nil {
+			resBody, _ = io.ReadAll(response.Body)
+		}
 		c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
 		c.logger.Errorf("HTTP response indicates error: %v", response.Status)
 		return resBody, errors.New("HTTP Response: " + response.Status)
@@ -98,6 +99,10 @@ func (c *SASTClient) sendRequest(method, url string, body io.Reader, header http
 }
 
 func (c *SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) {
+	if c.soapClient == nil {
+		return []byte{}, errors.New("No SOAP client initialized")
+	}
+
 	sasturl := fmt.Sprintf("%v/CxWebInterface/Portal/CxWebService.asmx", c.baseUrl)
 	header := http.Header{}
 	SOAPEnvOpen := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>"
@@ -136,114 +141,6 @@ func (s *Scan) String() string {
 	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.FinishTime.Format(time.RFC3339))
 }
 
-/*
-func getUserToken(client *http.Client, base_url string, username string, password string, logger *logrus.Logger) (string, error) {
-	logger.Trace("Generating user token")
-	data := url.Values{}
-	data.Set("username", username)
-	data.Set("password", password)
-	data.Set("grant_type", "password")
-	data.Set("scope", "sast_rest_api access_control_api")
-	data.Set("client_secret", "014DF517-39D1-4453-B7B3-9930C563627C")
-	data.Set("client_id", "resource_owner_client")
-
-	sast_req, err := http.NewRequest(http.MethodPost, base_url+"/cxrestapi/auth/identity/connect/token", strings.NewReader(data.Encode()))
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-
-	sast_req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	res, err := client.Do(sast_req)
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-	defer res.Body.Close()
-
-	resBody, err := io.ReadAll(res.Body)
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-
-	var jsonBody map[string]interface{}
-
-	err = json.Unmarshal(resBody, &jsonBody)
-
-	if err != nil {
-		logger.Errorf("Error: Login failed: %s", err.Error())
-		return "", err
-	}
-
-	if jsonBody["access_token"] == nil {
-		logger.Errorf("Response does not contain access token: %v", string(resBody))
-		return "", errors.New("Response does not contain access token")
-	} else {
-		return jsonBody["access_token"].(string), nil
-	}
-}
-
-func getSOAPToken(client *http.Client, base_url string, username string, password string, logger *logrus.Logger) (string, error) {
-	logger.Trace("Generating SOAP token")
-	data := url.Values{}
-	data.Set("username", username)
-	data.Set("password", password)
-	data.Set("grant_type", "password")
-	data.Set("scope", "sast_api offline_access")
-	data.Set("client_secret", "014DF517-39D1-4453-B7B3-9930C563627C")
-	data.Set("client_id", "resource_owner_sast_client")
-
-	sast_req, err := http.NewRequest(http.MethodPost, base_url+"/cxrestapi/auth/identity/connect/token", strings.NewReader(data.Encode()))
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-
-	sast_req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	res, err := client.Do(sast_req)
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-	defer res.Body.Close()
-
-	resBody, err := io.ReadAll(res.Body)
-
-	if err != nil {
-		logger.Errorf("Error: %s", err.Error())
-		return "", err
-	}
-
-	var jsonBody map[string]interface{}
-
-	err = json.Unmarshal(resBody, &jsonBody)
-
-	if err != nil {
-		logger.Errorf("Error: Login failed: %s", err.Error())
-		return "", err
-	}
-
-	if jsonBody["access_token"] == nil {
-		logger.Errorf("Response does not contain access token: %v", string(resBody))
-		return "", errors.New("Response does not contain access token")
-	} else {
-		return jsonBody["access_token"].(string), nil
-	}
-}
-
-func (c *SASTClient) GetToken() string {
-	return c.authToken
-}
-*/
-
 func (c *SASTClient) String() string {
 	return c.baseUrl // + " with token: " + ShortenGUID(c.authToken)
 }
@@ -252,73 +149,40 @@ func ShortenGUID(guid string) string {
 	return fmt.Sprintf("%v..%v", guid[:2], guid[len(guid)-2:])
 }
 
-func oauthClient(client *http.Client, base_url, client_id, client_secret, username, password string, scopes []string) *http.Client {
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, client)
-	conf := &oauth2.Config{
-		ClientID:     client_id,
-		ClientSecret: client_secret,
-		Scopes:       scopes,
-		Endpoint: oauth2.Endpoint{
-			TokenURL: fmt.Sprintf("%v/cxrestapi/auth/identity/connect/token", base_url),
-		},
-	}
-
-	source := PasswordTokenSource{
-		ctx:      ctx,
-		conf:     conf,
-		Username: username,
-		Password: password,
-	}
-
-	return oauth2.NewClient(ctx, oauth2.ReuseTokenSource(nil, source))
-}
-
+// If you want to provide your own authenticated HTTP Client (prepared through OAuth2 library) you can use this instead.
+// this is useful if you are using SAST authentication on a third-party website with authorization_code style oauth
+// oauth authorization_code helper function are implemented in sastpassclient.go
 func New(client *http.Client, soap_client *http.Client, base_url string, logger *logrus.Logger) *SASTClient {
 
 	cli := &SASTClient{client, soap_client, base_url, logger, nil}
 
 	user, err := cli.GetCurrentUser()
-	cli.CurrentUser = &user
 	if err != nil {
-		logger.Errorf("Error while fetching current user information: %s", err)
+		logger.Fatalf("Error while fetching current user information: %s", err)
+		return nil
 	}
+
+	cli.CurrentUser = &user
 
 	//	cli.RefreshCache()
 	return cli
 }
 
+// NewTokenClient will authenticate with SAST using the standard OIDC clients included in the platform
 func NewTokenClient(client *http.Client, base_url string, username string, password string, logger *logrus.Logger) (*SASTClient, error) {
+	// implemented in sastpassclient.go
+	rest_client := OauthCredentialClient(client, base_url, "resource_owner_client", "014DF517-39D1-4453-B7B3-9930C563627C", username, password, []string{"sast_rest_api", "access_control_api"})
+	if rest_client == nil {
+		return nil, errors.New("Unable to initialize CxREST API client")
+	}
+	soap_client := OauthCredentialClient(client, base_url, "resource_owner_sast_client", "014DF517-39D1-4453-B7B3-9930C563627C", username, password, []string{"sast_api", "offline_access"})
+	if soap_client == nil {
+		return nil, errors.New("Unable to initialize CxSOAP API client")
+	}
 
-	rest_client := oauthClient(client, base_url, "resource_owner_client", "014DF517-39D1-4453-B7B3-9930C563627C", username, password, []string{"sast_rest_api", "access_control_api"})
-	soap_client := oauthClient(client, base_url, "resource_owner_sast_client", "014DF517-39D1-4453-B7B3-9930C563627C", username, password, []string{"sast_api", "offline_access"})
-
-	/*
-		usertoken, err := getUserToken(client, base_url, username, password, logger)
-		if err != nil {
-			logger.Fatal("Error initializing SAST client: " + err.Error())
-			return nil, err
-		}
-
-		soaptoken, err := getSOAPToken(client, base_url, username, password, logger)
-		if err != nil {
-			logger.Fatal("Error initializing SAST client: " + err.Error())
-			return nil, err
-		}*/
-
-	//logger.Infof("Generated user token %v, soap token %v", ShortenGUID(usertoken), ShortenGUID(soaptoken))
-
-	return New(rest_client, soap_client, base_url, logger), nil
-}
-
-// oauth
-type PasswordTokenSource struct {
-	ctx      context.Context
-	conf     *oauth2.Config
-	Username string
-	Password string
-}
-
-func (c PasswordTokenSource) Token() (*oauth2.Token, error) {
-	return c.conf.PasswordCredentialsToken(c.ctx, c.Username, c.Password)
+	cli := New(rest_client, soap_client, base_url, logger)
+	if cli == nil {
+		return nil, errors.New("Unable to create client.")
+	}
+	return cli, nil
 }
