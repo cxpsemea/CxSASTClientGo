@@ -1,26 +1,24 @@
 package CxSASTClientGo
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/pkg/errors"
 )
 
 type SASTCache struct {
-	ProjectRefresh    bool
-	Projects          []Project
-	TeamRefresh       bool
-	Teams             []Team
-	UserRefresh       bool
-	Users             []User
-	QueryRefresh      bool
-	Queries           []Query
-	QueryGroupRefresh bool
-	QueryGroups       []QueryGroup // caching - to reconsider if needed
-	PresetRefresh     bool
-	Presets           []Preset
-	RoleRefresh       bool
-	Roles             []Role
+	Projects    []Project
+	Teams       []Team
+	Users       []User
+	Queries     []Query
+	QueryGroups []QueryGroup // caching - to reconsider if needed
+	Presets     []Preset
+	Roles       []Role
+}
+
+func (c *SASTCache) String() string {
+	return fmt.Sprintf("%d Projects, %d Teams, %d Users, %d Queries, %d QueryGroups, %d Presets, %d Roles", len(c.Projects), len(c.Teams), len(c.Users), len(c.Queries), len(c.QueryGroups), len(c.Presets), len(c.Roles))
 }
 
 func (c *SASTCache) matchTeamProjects() {
@@ -59,129 +57,124 @@ func (c *SASTCache) ProjectSummary() string {
 
 func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	var err error
-	if !c.ProjectRefresh {
-		c.ProjectRefresh = true
-		c.Projects, err = client.GetProjects()
+	c.Projects, err = client.GetProjects()
 
-		if err != nil {
-			client.logger.Errorf("Failed while retrieving projects: %s", err)
-		} else {
-			if len(c.Projects) > 0 {
-				for id, p := range c.Projects {
-					settings, err := client.GetProjectSettings(p.ProjectID)
-					if err != nil {
-						client.logger.Warnf("Failed while retrieving project settings for project %d: %s", p.ProjectID, err)
-					} else {
-						c.Projects[id].Settings = &settings
-					}
+	if err != nil {
+		client.logger.Errorf("Failed while retrieving projects: %s", err)
+		return fmt.Errorf("failed to retrieve presets: %s", err)
+	} else {
+		if len(c.Projects) > 0 {
+			for id, p := range c.Projects {
+				settings, err := client.GetProjectSettings(p.ProjectID)
+				if err != nil {
+					client.logger.Warnf("Failed while retrieving project settings for project %d: %s", p.ProjectID, err)
+				} else {
+					c.Projects[id].Settings = &settings
 				}
 			}
 		}
-		c.ProjectRefresh = false
 	}
-	return err
+
+	return nil
 }
 
 func (c *SASTCache) RefreshTeams(client *SASTClient) error {
 	var err error
-	if !c.TeamRefresh {
-		c.TeamRefresh = true
-		c.Teams, err = client.GetTeams()
-		c.TeamRefresh = false
+	c.Teams, err = client.GetTeams()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve teams: %s", err)
 	}
-	return err
+	return nil
 }
 
 func (c *SASTCache) RefreshUsers(client *SASTClient) error {
 	var err error
-	if !c.UserRefresh {
-		c.UserRefresh = true
-		c.Users, err = client.GetUsers()
-		c.UserRefresh = false
+	c.Users, err = client.GetUsers()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve users: %s", err)
 	}
-	return err
+	return nil
 }
 
 func (c *SASTCache) RefreshQueries(client *SASTClient) error {
+	_, soap := client.ClientsValid()
 	var err error
-	if !c.QueryRefresh {
-		c.QueryRefresh = true
+	if soap {
 		c.QueryGroups, c.Queries, err = client.GetQueriesSOAP()
-		c.QueryRefresh = false
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to retrieve queries: %s", err)
+	}
+	return nil
 }
 
 func (c *SASTCache) RefreshPresets(client *SASTClient) error {
 	var err error
-	if !c.PresetRefresh {
-		c.PresetRefresh = true
-		c.Presets, err = client.GetPresets()
-		if err != nil {
-			client.logger.Errorf("Failed while retrieving presets: %s", err)
-		} else {
-			if len(c.Queries) > 0 {
-				for id := range c.Presets {
-					err := client.GetPresetContents(&c.Presets[id], &c.Queries)
-					if err != nil {
-						client.logger.Errorf("Failed to retrieve preset contents for preset %v: %s", c.Presets[id].String(), err)
-					}
+	c.Presets, err = client.GetPresets()
+	if err != nil {
+		client.logger.Errorf("Failed while retrieving presets: %s", err)
+		return fmt.Errorf("failed to retrieve presets: %s", err)
+	} else {
+		if len(c.Queries) > 0 {
+			for id := range c.Presets {
+				err := client.GetPresetContents(&c.Presets[id], &c.Queries)
+				if err != nil {
+					client.logger.Errorf("Failed to retrieve preset contents for preset %v: %s", c.Presets[id].String(), err)
 				}
 			}
 		}
-		c.PresetRefresh = false
 	}
-	return err
+	return nil
 }
 
 func (c *SASTCache) RefreshRoles(client *SASTClient) error {
 	var err error
-	if !c.RoleRefresh {
-		c.RoleRefresh = true
-		c.Roles, err = client.GetRoles()
-		c.RoleRefresh = false
+	c.Roles, err = client.GetRoles()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve presets: %s", err)
 	}
-	return err
+	return nil
 }
 
-func (c *SASTCache) Refresh(client *SASTClient) error {
+func (c *SASTCache) Refresh(client *SASTClient) []error {
+	var errors []error
 	var err error
 
 	err = c.RefreshProjects(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 
 	err = c.RefreshTeams(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 
 	err = c.RefreshUsers(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 
 	//if client.soapToken != "" {
 	err = c.RefreshQueries(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 	//}
 
 	err = c.RefreshPresets(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 
 	err = c.RefreshRoles(client)
 	if err != nil {
-		return err
+		errors = append(errors, err)
 	}
 
 	c.matchTeamProjects()
 
-	return nil
+	return errors
 }
 
 func (c *SASTCache) GetTeam(teamID uint64) (*Team, error) {

@@ -8,10 +8,8 @@ import (
 )
 
 type SASTClient struct {
-	restClient *http.Client
-	soapClient *http.Client
-	//authToken   string
-	//soapToken   string
+	restClient  *http.Client
+	soapClient  *http.Client
 	baseUrl     string
 	logger      *logrus.Logger
 	CurrentUser *User
@@ -86,6 +84,7 @@ type PathNode struct {
 type Preset struct {
 	PresetID uint64 `json:"id"`
 	Name     string
+	QueryIDs []uint64
 	Filled   bool
 	Queries  []Query
 }
@@ -120,10 +119,10 @@ type ProjectSettings struct {
 
 type Query struct {
 	Name      string
-	QueryID   uint64 `xml:"QueryID"`
+	QueryID   uint64 `xml:"QueryId"`
 	CWE       uint64 `xml:"Cwe"`
 	Severity  int
-	PackageID uint64 `xml:"PackageID"`
+	PackageID uint64 `xml:"PackageId"`
 	Language  string
 	Group     string
 }
@@ -133,13 +132,13 @@ type QueryGroup struct {
 	PackageID       uint64
 	Queries         []*Query
 	Language        string `xml:"languageName"`
-	OwningProjectID uint64 `xml:"ProjectID"`
+	OwningProjectID uint64 `xml:"ProjectId"`
 	PackageType     string `xml:"PackageTypeName"`
 	OwningTeamID    uint64 `xml:"OwningTeam"`
 }
 
 type Report struct {
-	ReportID uint64 `json:"reportID"`
+	ReportID uint64 `json:"reportId"`
 	Links    Links  `json:"links"`
 }
 

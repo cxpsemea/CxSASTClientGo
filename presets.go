@@ -83,12 +83,25 @@ func (c *SASTClient) GetPresets() ([]Preset, error) {
 	return presets, err
 }
 
+func (c *SASTClient) GetPresetByName(name string) (Preset, error) {
+	c.logger.Debugf("Get preset by name %v", name)
+	var preset Preset
+	var presets []Preset
+	presets, err := c.GetPresets()
+	if err != nil {
+		return preset, err
+	}
+
+	for _, p := range presets {
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	return preset, errors.New("No such preset found")
+}
+
 func (c *SASTClient) GetPresetContents(p *Preset, queries *[]Query) error {
 	c.logger.Debugf("Fetching contents for preset %v", p.PresetID)
-
-	if len(*queries) == 0 {
-		return errors.New("Queries list is empty")
-	}
 
 	response, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/sast/presets/%d", p.PresetID), nil, nil)
 	if err != nil {
@@ -109,14 +122,20 @@ func (c *SASTClient) GetPresetContents(p *Preset, queries *[]Query) error {
 
 	c.logger.Tracef("Parsed preset %v with %d queries", PresetContents.Name, len(PresetContents.QueryIDs))
 
-	p.Queries = make([]Query, 0)
-	for _, qid := range PresetContents.QueryIDs {
-		q := c.GetQueryByID(qid, queries)
-		if q != nil {
-			p.Queries = append(p.Queries, *q)
-			c.logger.Tracef(" - linked query: %v", q.String())
+	if queries == nil || len(*queries) == 0 {
+		c.logger.Warnf("GetPresetContents called with an empty queries array, will not populate the Preset.Queries array")
+	} else {
+		p.Queries = make([]Query, len(PresetContents.QueryIDs))
+		for id, qid := range PresetContents.QueryIDs {
+			q := c.GetQueryByID(qid, queries)
+			if q != nil {
+				p.Queries[id] = *q
+				c.logger.Tracef(" - linked query: %v", q.String())
+			}
 		}
 	}
+
+	p.QueryIDs = PresetContents.QueryIDs
 
 	p.Filled = true
 	return nil
