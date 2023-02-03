@@ -12,6 +12,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/oauth2"
 )
 
 func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
@@ -137,6 +138,32 @@ func (c *SASTClient) get(api string) ([]byte, error) {
 	return c.getV(api, "1.0")
 }
 
+func (c *SASTClient) ClientsValid() (bool, bool) {
+
+	rest_valid := false
+	soap_valid := false
+
+	if c.restClient != nil {
+		token, err := c.restClient.Transport.(*oauth2.Transport).Source.Token()
+		if err != nil {
+			rest_valid = false
+		} else {
+			rest_valid = token.Valid()
+		}
+	}
+
+	if c.soapClient != nil {
+		token, err := c.soapClient.Transport.(*oauth2.Transport).Source.Token()
+		if err != nil {
+			soap_valid = false
+		} else {
+			soap_valid = token.Valid()
+		}
+	}
+
+	return rest_valid, soap_valid
+}
+
 func (s *Scan) String() string {
 	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.FinishTime.Format(time.RFC3339))
 }
@@ -152,20 +179,20 @@ func ShortenGUID(guid string) string {
 // If you want to provide your own authenticated HTTP Client (prepared through OAuth2 library) you can use this instead.
 // this is useful if you are using SAST authentication on a third-party website with authorization_code style oauth
 // oauth authorization_code helper function are implemented in sastpassclient.go
-func New(client *http.Client, soap_client *http.Client, base_url string, logger *logrus.Logger) *SASTClient {
+func New(client *http.Client, soap_client *http.Client, base_url string, logger *logrus.Logger) (*SASTClient, error) {
 
 	cli := &SASTClient{client, soap_client, base_url, logger, nil}
 
 	user, err := cli.GetCurrentUser()
 	if err != nil {
-		logger.Fatalf("Error while fetching current user information: %s", err)
-		return nil
+		logger.Errorf("Error while fetching current user information: %s", err)
+		return nil, err
 	}
 
 	cli.CurrentUser = &user
 
 	//	cli.RefreshCache()
-	return cli
+	return cli, nil
 }
 
 // NewTokenClient will authenticate with SAST using the standard OIDC clients included in the platform
@@ -180,9 +207,9 @@ func NewTokenClient(client *http.Client, base_url string, username string, passw
 		return nil, errors.New("Unable to initialize CxSOAP API client")
 	}
 
-	cli := New(rest_client, soap_client, base_url, logger)
-	if cli == nil {
-		return nil, errors.New("Unable to create client.")
+	cli, err := New(rest_client, soap_client, base_url, logger)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create client: %s", err)
 	}
 	return cli, nil
 }

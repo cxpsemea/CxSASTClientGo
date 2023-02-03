@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 )
 
@@ -43,6 +44,13 @@ func OauthCodeHTTPClient(client *http.Client, base_url, client_id, oauth_code, o
 	err = json.Unmarshal(body, &returnval)
 	if err != nil {
 		return nil, err
+	}
+
+	if returnval["access_token"] == nil {
+		return nil, errors.New(fmt.Sprintf("no access_token returned in response: %v", string(body)))
+	}
+	if returnval["refresh_token"] == nil {
+		return nil, errors.New(fmt.Sprintf("no refresh_token returned in response: %v", string(body)))
 	}
 
 	conf := &oauth2.Config{
@@ -121,15 +129,7 @@ func (c *PasswordTokenSource) Token() (*oauth2.Token, error) {
 	if c.LastToken.Valid() {
 		//		fmt.Println("Last token is still valid")
 		return c.LastToken, nil
-	} /* else {
-		if c.LastToken == nil {
-			fmt.Println(" - last token is nil")
-		} else {
-			fmt.Println(" - last token expired")
-		}
-	}*/
-
-	//	fmt.Println("Last token is invalid, refreshing")
+	}
 	var err error
 	c.LastToken, err = c.conf.Config.PasswordCredentialsToken(c.ctx, c.conf.Username, c.conf.Password)
 	return c.LastToken, err
