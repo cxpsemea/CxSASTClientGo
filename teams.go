@@ -1,8 +1,10 @@
 package CxSASTClientGo
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 )
 
 func (t Team) HasProjects() bool {
@@ -36,6 +38,38 @@ func (c *SASTClient) GetTeamByID(teamId uint64) (Team, error) {
 
 	err = json.Unmarshal(response, &team)
 	return team, err
+}
+
+func (c *SASTClient) CreateTeam(name string, parentId uint64) (uint64, error) {
+	var newTeam uint64
+	body := map[string]interface{}{
+		"name":     name,
+		"parentId": parentId,
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return newTeam, err
+	}
+
+	response, err := c.sendRequest(http.MethodPost, "/auth/teams", bytes.NewReader(jsonBody), nil)
+	if err != nil {
+		return newTeam, err
+	}
+
+	err = json.Unmarshal(response, &newTeam)
+	return newTeam, err
+}
+
+func (c *SASTClient) DeleteTeam(teamId uint64) error {
+	response, err := c.sendRequest(http.MethodDelete, fmt.Sprintf("/auth/teams/%d", teamId), nil, nil)
+	if err != nil {
+		return err
+	}
+	if response != nil && string(response) != "" {
+		c.logger.Warningf("Deleted team but back-end replied: %v", string(response))
+	}
+	return nil
 }
 
 func (c *SASTClient) TeamLink(t *Team) string {
