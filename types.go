@@ -173,6 +173,9 @@ type Scan struct {
 		ID   uint64
 		Name string
 	}
+	ScanState struct {
+		SourceID string `json:"sourceId"`
+	}
 	FinishTime time.Time
 }
 
