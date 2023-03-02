@@ -130,11 +130,21 @@ type Query struct {
 type QueryGroup struct {
 	Name            string
 	PackageID       uint64
-	Queries         []*Query
+	Queries         []Query
 	Language        string `xml:"languageName"`
 	OwningProjectID uint64 `xml:"ProjectId"`
 	PackageType     string `xml:"PackageTypeName"`
 	OwningTeamID    uint64 `xml:"OwningTeam"`
+}
+
+type QueryLanguage struct {
+	Name        string
+	LanguageID  uint64
+	QueryGroups []QueryGroup
+}
+
+type QueryCollection struct {
+	QueryLanguages []QueryLanguage
 }
 
 type Report struct {
@@ -214,6 +224,7 @@ type ScanResultSummary struct {
 type Team struct {
 	TeamID   uint64 `json:"id"`
 	Name     string
+	FullName string
 	ParentID uint64
 	Projects []Project
 }

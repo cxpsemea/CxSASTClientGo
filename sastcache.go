@@ -8,17 +8,16 @@ import (
 )
 
 type SASTCache struct {
-	Projects    []Project
-	Teams       []Team
-	Users       []User
-	Queries     []Query
-	QueryGroups []QueryGroup // caching - to reconsider if needed
-	Presets     []Preset
-	Roles       []Role
+	Projects []Project
+	Teams    []Team
+	Users    []User
+	Queries  QueryCollection
+	Presets  []Preset
+	Roles    []Role
 }
 
 func (c *SASTCache) String() string {
-	return fmt.Sprintf("%d Projects, %d Teams, %d Users, %d Queries, %d QueryGroups, %d Presets, %d Roles", len(c.Projects), len(c.Teams), len(c.Users), len(c.Queries), len(c.QueryGroups), len(c.Presets), len(c.Roles))
+	return fmt.Sprintf("%d Projects, %d Teams, %d Users, %d QueryLanguages, %d Presets, %d Roles", len(c.Projects), len(c.Teams), len(c.Users), len(c.Queries.QueryLanguages), len(c.Presets), len(c.Roles))
 }
 
 func (c *SASTCache) matchTeamProjects() {
@@ -37,7 +36,7 @@ func (c *SASTCache) PresetSummary() string {
 }
 func (c *SASTCache) QuerySummary() string {
 
-	return strconv.Itoa(len(c.Queries)) + " queries  in " + strconv.Itoa(len(c.QueryGroups)) + " groups"
+	return fmt.Sprintf("%dquery languages", len(c.Queries.QueryLanguages))
 }
 func (c *SASTCache) UserSummary() string {
 
@@ -100,7 +99,7 @@ func (c *SASTCache) RefreshQueries(client *SASTClient) error {
 	_, soap := client.ClientsValid()
 	var err error
 	if soap {
-		c.QueryGroups, c.Queries, err = client.GetQueriesSOAP()
+		c.Queries, err = client.GetQueriesSOAP()
 	}
 	if err != nil {
 		return fmt.Errorf("failed to retrieve queries: %s", err)
@@ -115,7 +114,7 @@ func (c *SASTCache) RefreshPresets(client *SASTClient) error {
 		client.logger.Errorf("Failed while retrieving presets: %s", err)
 		return fmt.Errorf("failed to retrieve presets: %s", err)
 	} else {
-		if len(c.Queries) > 0 {
+		if len(c.Queries.QueryLanguages) > 0 {
 			for id := range c.Presets {
 				err := client.GetPresetContents(&c.Presets[id], &c.Queries)
 				if err != nil {
@@ -219,6 +218,37 @@ func (c *SASTCache) GetUserByEmail(email string) (*User, error) {
 	}
 	return nil, errors.New("No such user")
 }
+func (c *SASTCache) GetUsersInTeam(teamID uint64) []*User {
+	users := make([]*User, 0)
+
+	for id, u := range c.Users {
+		for _, tid := range u.TeamIDs {
+			if tid == teamID {
+				users = append(users, &c.Users[id])
+			}
+		}
+	}
+
+	return users
+}
+
+func (c *SASTCache) GetUsersInTeams(teams []Team) []*User {
+	users := make([]*User, 0)
+
+	for id, u := range c.Users {
+		matched := false
+		for _, tid := range u.TeamIDs {
+			for _, teamID := range teams {
+				if tid == teamID.TeamID && !matched {
+					users = append(users, &c.Users[id])
+					matched = true
+				}
+			}
+		}
+	}
+
+	return users
+}
 
 func (c *SASTCache) GetProject(projectID uint64) (*Project, error) {
 	for id, g := range c.Projects {
@@ -281,10 +311,9 @@ func (c *SASTCache) GetRoleByName(name string) (*Role, error) {
 }
 
 func (c *SASTCache) GetQuery(queryID uint64) (*Query, error) {
-	for id, g := range c.Queries {
-		if g.QueryID == queryID {
-			return &c.Queries[id], nil
-		}
+	q := c.Queries.GetQueryByID(queryID)
+	if q != nil {
+		return q, nil
 	}
 	return nil, errors.New("No such query")
 }
