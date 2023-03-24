@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) GetScanPresetSOAP(scanid uint64) (Preset, error) {
+func (c SASTClient) GetScanPresetSOAP(scanid uint64) (Preset, error) {
 	var xmlResponse struct {
 		XMLName xml.Name `xml:"Envelope"`
 		Body    struct {
@@ -71,7 +71,7 @@ func (p *Preset) String() string {
 	return fmt.Sprintf("[%d] %v", p.PresetID, p.Name)
 }
 
-func (c *SASTClient) GetPresets() ([]Preset, error) {
+func (c SASTClient) GetPresets() ([]Preset, error) {
 	c.logger.Debug("Get SAST Presets")
 	var presets []Preset
 	response, err := c.get("/sast/presets")
@@ -83,7 +83,19 @@ func (c *SASTClient) GetPresets() ([]Preset, error) {
 	return presets, err
 }
 
-func (c *SASTClient) GetPresetByName(name string) (Preset, error) {
+func (c SASTClient) GetPresetByID(presetID uint64) (Preset, error) {
+	c.logger.Debugf("Get SAST Preset by ID %d", presetID)
+	var preset Preset
+	response, err := c.get(fmt.Sprintf("/sast/presets/%d", presetID))
+	if err != nil {
+		return preset, err
+	}
+
+	err = json.Unmarshal(response, &preset)
+	return preset, err
+}
+
+func (c SASTClient) GetPresetByName(name string) (Preset, error) {
 	c.logger.Debugf("Get preset by name %v", name)
 	var preset Preset
 	var presets []Preset
@@ -100,7 +112,7 @@ func (c *SASTClient) GetPresetByName(name string) (Preset, error) {
 	return preset, errors.New("No such preset found")
 }
 
-func (c *SASTClient) GetPresetContents(p *Preset, queries *QueryCollection) error {
+func (c SASTClient) GetPresetContents(p *Preset, queries *QueryCollection) error {
 	c.logger.Debugf("Fetching contents for preset %v", p.PresetID)
 
 	response, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/sast/presets/%d", p.PresetID), nil, nil)
@@ -141,6 +153,6 @@ func (c *SASTClient) GetPresetContents(p *Preset, queries *QueryCollection) erro
 	return nil
 }
 
-func (c *SASTClient) PresetLink(p *Preset) string {
+func (c SASTClient) PresetLink(p *Preset) string {
 	return fmt.Sprintf("%v/CxWebClient/Presets.aspx?id=%d", c.baseUrl, p.PresetID)
 }

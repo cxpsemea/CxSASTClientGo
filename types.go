@@ -90,13 +90,20 @@ type Preset struct {
 }
 
 type Project struct {
-	ProjectID  uint64 `json:"id"`
-	TeamID     uint64
-	Name       string
-	IsPublic   bool
-	SourceType string
-	Settings   *ProjectSettings
-	Repo       *ProjectRepo
+	ProjectID    uint64 `json:"id"`
+	TeamID       uint64
+	Name         string
+	IsPublic     bool
+	SourceType   string
+	Settings     *ProjectSettings
+	Repo         *ProjectRepo
+	CustomFields []ProjectCustomField
+}
+
+type ProjectCustomField struct {
+	ID    uint   `json:"id"`
+	Value string `json:"value"`
+	Name  string `json:"name"`
 }
 
 type ProjectRepo struct {
@@ -108,6 +115,7 @@ type ProjectRepo struct {
 type ProjectSettings struct {
 	ProjectID             uint64
 	PresetID              uint64
+	PresetName            string
 	EngineConfigurationID uint64
 	PostScanAction        int64
 	EmailNotifications    struct {
@@ -219,6 +227,18 @@ type ScanResultSummary struct {
 	Medium      ScanResultStatusSummary
 	Low         ScanResultStatusSummary
 	Information ScanResultStatusSummary
+}
+
+type ScanSettings struct {
+	ProjectID              uint64  `json:"projectID"`
+	OverrideProjectSetting bool    `json:"overrideProjectSetting"`
+	IsIncremental          bool    `json:"isIncremental"`
+	IsPublic               bool    `json:"isPublic"`
+	ForceScan              bool    `json:"forceScan"`
+	Comment                string  `json:"comment"`
+	PresetID               uint64  `json:"presetId"`
+	EngineConfigurationID  uint64  `json:"engineConfigurationId"`
+	ZippedSource           *[]byte `json:"zippedSource,omitempty"`
 }
 
 type Team struct {

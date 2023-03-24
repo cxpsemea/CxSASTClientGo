@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error) {
+func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error) {
 	results := make([]ScanResult, 0)
 	/*
 	   Based on the Checkmarx step built into Project-Piper.io
@@ -121,7 +121,7 @@ func addResultStatus(summary *ScanResultStatusSummary, result *ScanResult) {
 	}
 }
 
-func (c *SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary {
+func (c SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary {
 	summary := ScanResultSummary{}
 
 	for _, result := range results {

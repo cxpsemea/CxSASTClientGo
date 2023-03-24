@@ -64,11 +64,9 @@ func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	} else {
 		if len(c.Projects) > 0 {
 			for id, p := range c.Projects {
-				settings, err := client.GetProjectSettings(p.ProjectID)
+				err := client.GetProjectSettings(&(c.Projects[id]))
 				if err != nil {
 					client.logger.Warnf("Failed while retrieving project settings for project %d: %s", p.ProjectID, err)
-				} else {
-					c.Projects[id].Settings = &settings
 				}
 			}
 		}

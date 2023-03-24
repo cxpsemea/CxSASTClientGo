@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) GetAuthenticationProviders() ([]AuthenticationProvider, error) {
+func (c SASTClient) GetAuthenticationProviders() ([]AuthenticationProvider, error) {
 	c.logger.Trace("Fetching authentication providers")
 
 	var providers []AuthenticationProvider
@@ -31,7 +31,7 @@ func (c *SASTClient) GetAuthenticationProviders() ([]AuthenticationProvider, err
 	return providers, err
 }
 
-func (c *SASTClient) GetOIDCClients() ([]OIDCClient, error) {
+func (c SASTClient) GetOIDCClients() ([]OIDCClient, error) {
 	c.logger.Trace("Fetching OIDC Clients")
 
 	var clients []OIDCClient
@@ -54,7 +54,7 @@ func (c *SASTClient) GetOIDCClients() ([]OIDCClient, error) {
 }
 
 // convenience
-func (c *SASTClient) GetOIDCClientByID(clientId string) (OIDCClient, error) {
+func (c SASTClient) GetOIDCClientByID(clientId string) (OIDCClient, error) {
 	c.logger.Tracef("Fetching OIDC Client with clientId %v", clientId)
 
 	clients, err := c.GetOIDCClients()
@@ -73,7 +73,7 @@ func (c *SASTClient) GetOIDCClientByID(clientId string) (OIDCClient, error) {
 	return OIDCClient{}, errors.New("No such client found")
 }
 
-func (c *SASTClient) SaveOIDCClient(client *OIDCClient) error {
+func (c SASTClient) SaveOIDCClient(client *OIDCClient) error {
 	c.logger.Tracef("Updating OIDC Client %v", client.ClientID)
 
 	jsonBody, err := json.Marshal(*client)
@@ -92,7 +92,7 @@ func (c *SASTClient) SaveOIDCClient(client *OIDCClient) error {
 	return nil
 }
 
-func (c *SASTClient) CreateOIDCClient(client *OIDCClient) error {
+func (c SASTClient) CreateOIDCClient(client *OIDCClient) error {
 	c.logger.Tracef("Creating OIDC Client %v", client.ClientID)
 
 	jsonBody, err := json.Marshal(*client)
@@ -111,7 +111,7 @@ func (c *SASTClient) CreateOIDCClient(client *OIDCClient) error {
 	return nil
 }
 
-func (c *SASTClient) DeleteOIDCClient(client *OIDCClient) error {
+func (c SASTClient) DeleteOIDCClient(client *OIDCClient) error {
 	c.logger.Tracef("Creating OIDC Client %v", client.ClientID)
 
 	_, err := c.sendRequest(http.MethodDelete, fmt.Sprintf("/auth/OIDCClients/%d", client.ID), nil, nil)
