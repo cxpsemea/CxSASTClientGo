@@ -211,6 +211,8 @@ type ScanResult struct {
 	SimilarityID      int64
 	SourceMethod      string
 	DestinationMethod string
+	Group             string
+	Language          string
 	Nodes             []PathNode
 }
 

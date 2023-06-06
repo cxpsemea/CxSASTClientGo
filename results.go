@@ -34,9 +34,11 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 		SourceOrigin             string   `xml:"SourceOrigin,attr"`
 		Visibility               string   `xml:"Visibility,attr"`
 		Queries                  []struct {
-			XMLName xml.Name `xml:"Query"`
-			Name    string   `xml:"name,attr"`
-			Results []struct {
+			XMLName  xml.Name `xml:"Query"`
+			Name     string   `xml:"name,attr"`
+			Group    string   `xml:"group,attr"`
+			Language string   `xml:"Language,attr"`
+			Results  []struct {
 				XMLName       xml.Name `xml:"Result"`
 				State         string   `xml:"state,attr"`
 				Status        string   `xml:"Status,attr"`
@@ -95,6 +97,8 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 				result.Path.SimilarityID,
 				result.Path.SourceMethod,
 				result.Path.DestinationMethod,
+				query.Group,
+				query.Language,
 				result.Path.Nodes,
 			})
 		}
