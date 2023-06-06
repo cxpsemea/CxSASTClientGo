@@ -10,7 +10,7 @@ func (r *Role) String() string {
 	return fmt.Sprintf("[%d] %v", r.RoleID, r.Name)
 }
 
-func (c *SASTClient) GetRoles() ([]Role, error) {
+func (c SASTClient) GetRoles() ([]Role, error) {
 	c.logger.Debug("Get SAST Roles")
 	var roles []Role
 	response, err := c.get("/auth/roles")
@@ -22,6 +22,6 @@ func (c *SASTClient) GetRoles() ([]Role, error) {
 	return roles, err
 }
 
-func (c *SASTClient) RoleLink(r *Role) string {
+func (c SASTClient) RoleLink(r *Role) string {
 	return fmt.Sprintf("%v/CxRestAPI/auth/#/roles/%d", c.baseUrl, r.RoleID)
 }

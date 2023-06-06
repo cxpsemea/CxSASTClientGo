@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error) {
+func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error) {
 	results := make([]ScanResult, 0)
 	/*
 	   Based on the Checkmarx step built into Project-Piper.io
@@ -34,9 +34,11 @@ func (c *SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, erro
 		SourceOrigin             string   `xml:"SourceOrigin,attr"`
 		Visibility               string   `xml:"Visibility,attr"`
 		Queries                  []struct {
-			XMLName xml.Name `xml:"Query"`
-			Name    string   `xml:"name,attr"`
-			Results []struct {
+			XMLName  xml.Name `xml:"Query"`
+			Name     string   `xml:"name,attr"`
+			Group    string   `xml:"group,attr"`
+			Language string   `xml:"Language,attr"`
+			Results  []struct {
 				XMLName       xml.Name `xml:"Result"`
 				State         string   `xml:"state,attr"`
 				Status        string   `xml:"Status,attr"`
@@ -95,6 +97,8 @@ func (c *SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, erro
 				result.Path.SimilarityID,
 				result.Path.SourceMethod,
 				result.Path.DestinationMethod,
+				query.Group,
+				query.Language,
 				result.Path.Nodes,
 			})
 		}
@@ -121,7 +125,7 @@ func addResultStatus(summary *ScanResultStatusSummary, result *ScanResult) {
 	}
 }
 
-func (c *SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary {
+func (c SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary {
 	summary := ScanResultSummary{}
 
 	for _, result := range results {

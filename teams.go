@@ -16,7 +16,7 @@ func (t *Team) String() string {
 	return fmt.Sprintf("[%d] %v", t.TeamID, t.Name)
 }
 
-func (c *SASTClient) GetTeams() ([]Team, error) {
+func (c SASTClient) GetTeams() ([]Team, error) {
 	c.logger.Debug("Get SAST Teams")
 	var teams []Team
 	response, err := c.get("/auth/teams")
@@ -28,7 +28,7 @@ func (c *SASTClient) GetTeams() ([]Team, error) {
 	return teams, err
 }
 
-func (c *SASTClient) GetTeamByID(teamId uint64) (Team, error) {
+func (c SASTClient) GetTeamByID(teamId uint64) (Team, error) {
 	c.logger.Debugf("Get SAST Team with ID %d", teamId)
 	var team Team
 	response, err := c.get(fmt.Sprintf("/auth/teams/%d", teamId))
@@ -40,7 +40,7 @@ func (c *SASTClient) GetTeamByID(teamId uint64) (Team, error) {
 	return team, err
 }
 
-func (c *SASTClient) CreateTeam(name string, parentId uint64) (uint64, error) {
+func (c SASTClient) CreateTeam(name string, parentId uint64) (uint64, error) {
 	var newTeam uint64
 	body := map[string]interface{}{
 		"name":     name,
@@ -61,7 +61,12 @@ func (c *SASTClient) CreateTeam(name string, parentId uint64) (uint64, error) {
 	return newTeam, err
 }
 
-func (c *SASTClient) DeleteTeam(teamId uint64) error {
+func (c SASTClient) DeleteTeam(teamId uint64) error {
+	c.depwarn("DeleteTeam", "DeleteTeamByID")
+	return c.DeleteTeamByID(teamId)
+}
+
+func (c SASTClient) DeleteTeamByID(teamId uint64) error {
 	response, err := c.sendRequest(http.MethodDelete, fmt.Sprintf("/auth/teams/%d", teamId), nil, nil)
 	if err != nil {
 		return err
@@ -72,6 +77,6 @@ func (c *SASTClient) DeleteTeam(teamId uint64) error {
 	return nil
 }
 
-func (c *SASTClient) TeamLink(t *Team) string {
+func (c SASTClient) TeamLink(t *Team) string {
 	return fmt.Sprintf("%v/CxRestAPI/auth/#/teams/id=%d", c.baseUrl, t.TeamID) // this link doesn't actually work, just takes you to the main page
 }

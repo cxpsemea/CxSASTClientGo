@@ -15,7 +15,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func (c *SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
+func (c SASTClient) createRequest(method, url string, body io.Reader, header *http.Header, cookies []*http.Cookie) (*http.Request, error) {
 	request, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return &http.Request{}, err
@@ -42,7 +42,7 @@ func (c *SASTClient) createRequest(method, url string, body io.Reader, header *h
 	return request, nil
 }
 
-func (c *SASTClient) sendRequestInternal(client *http.Client, method, url string, body io.Reader, header http.Header) ([]byte, error) {
+func (c SASTClient) sendRequestInternal(client *http.Client, method, url string, body io.Reader, header http.Header) ([]byte, error) {
 	var bodyBytes []byte
 	c.logger.Debugf("Sending request to URL %v", url)
 	if body != nil {
@@ -94,12 +94,12 @@ func (c *SASTClient) sendRequestInternal(client *http.Client, method, url string
 	return resBody, nil
 }
 
-func (c *SASTClient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
+func (c SASTClient) sendRequest(method, url string, body io.Reader, header http.Header) ([]byte, error) {
 	sasturl := fmt.Sprintf("%v/cxrestapi%v", c.baseUrl, url)
 	return c.sendRequestInternal(c.restClient, method, sasturl, body, header)
 }
 
-func (c *SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) {
+func (c SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) {
 	if c.soapClient == nil {
 		return []byte{}, errors.New("No SOAP client initialized")
 	}
@@ -117,7 +117,7 @@ func (c *SASTClient) sendSOAPRequest(method string, body string) ([]byte, error)
 	return c.sendRequestInternal(c.soapClient, http.MethodPost, sasturl, strings.NewReader(soap_msg), header)
 }
 
-func (c *SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte) {
+func (c SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte) {
 	if len(requestBody) != 0 {
 		c.logger.Errorf("Request body: %s", string(requestBody))
 	}
@@ -127,18 +127,18 @@ func (c *SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, respons
 }
 
 // convenience function
-func (c *SASTClient) getV(api string, version string) ([]byte, error) {
+func (c SASTClient) getV(api string, version string) ([]byte, error) {
 	header := http.Header{}
 	header.Add("Accept", "application/json;version="+version)
 
 	return c.sendRequest(http.MethodGet, api, nil, header)
 }
 
-func (c *SASTClient) get(api string) ([]byte, error) {
+func (c SASTClient) get(api string) ([]byte, error) {
 	return c.getV(api, "1.0")
 }
 
-func (c *SASTClient) ClientsValid() (bool, bool) {
+func (c SASTClient) ClientsValid() (bool, bool) {
 
 	rest_valid := false
 	soap_valid := false
@@ -168,7 +168,7 @@ func (s *Scan) String() string {
 	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.FinishTime.Format(time.RFC3339))
 }
 
-func (c *SASTClient) String() string {
+func (c SASTClient) String() string {
 	return c.baseUrl // + " with token: " + ShortenGUID(c.authToken)
 }
 
@@ -212,4 +212,12 @@ func NewTokenClient(client *http.Client, base_url string, username string, passw
 		return nil, fmt.Errorf("unable to create client: %s", err)
 	}
 	return cli, nil
+}
+
+func (c SASTClient) depwarn(old, new string) {
+	if new == "" {
+		c.logger.Warnf("Cx1SASTClientGo deprecation notice: %v will be deprecated", old)
+	} else {
+		c.logger.Warnf("Cx1SASTClientGo deprecation notice: %v will be deprecated and replaced by %v", old, new)
+	}
 }

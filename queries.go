@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) GetQueriesSOAP() (QueryCollection, error) {
+func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 	var xmlResponse struct {
 		XMLName xml.Name `xml:"Envelope"`
 		Body    struct {
@@ -171,7 +171,7 @@ func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 	return cqc
 }
 
-func (c *SASTClient) GetQueryByID(qid uint64, queries *[]Query) *Query {
+func (c SASTClient) GetQueryByID(qid uint64, queries *[]Query) *Query {
 	for id, q := range *queries {
 		if q.QueryID == qid {
 			return &(*queries)[id]
@@ -197,14 +197,14 @@ func (q *QueryLanguage) String() string {
 	return q.Name
 }
 
-func (c *SASTClient) QueryLink(q *Query) string {
+func (c SASTClient) QueryLink(q *Query) string {
 	return fmt.Sprintf("%v/CxWebClient/QueriesExplorer.aspx?queryid=%d", c.baseUrl, q.QueryID)
 }
 
-func (c *SASTClient) QueryGroupLink(q *QueryGroup) string {
+func (c SASTClient) QueryGroupLink(q *QueryGroup) string {
 	return fmt.Sprintf("%v/CxWebClient/QueriesExplorer.aspx?language=%v&group=%v", c.baseUrl, q.Language, q.Name)
 }
 
-func (c *SASTClient) QueryLanguageLink(q *QueryLanguage) string {
+func (c SASTClient) QueryLanguageLink(q *QueryLanguage) string {
 	return fmt.Sprintf("%v/CxWebClient/QueriesExplorer.aspx?language=%v", c.baseUrl, q.Name)
 }

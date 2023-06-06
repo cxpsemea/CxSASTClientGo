@@ -10,7 +10,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c *SASTClient) RequestNewReport(scanID uint64, reportType string) (Report, error) {
+func (c SASTClient) RequestNewReport(scanID uint64, reportType string) (Report, error) {
+	c.depwarn("RequestNewReport", "RequestNewReportByID")
+	return c.RequestNewReportByID(scanID, reportType)
+}
+
+func (c SASTClient) RequestNewReportByID(scanID uint64, reportType string) (Report, error) {
 	report := Report{}
 	jsonData := map[string]interface{}{
 		"scanId":     scanID,
@@ -32,7 +37,12 @@ func (c *SASTClient) RequestNewReport(scanID uint64, reportType string) (Report,
 	return report, err
 }
 
-func (c *SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, error) {
+func (c SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, error) {
+	c.depwarn("GetReportStatus", "GetReportStatusByID")
+	return c.GetReportStatusByID(reportID)
+}
+
+func (c SASTClient) GetReportStatusByID(reportID uint64) (ReportStatusResponse, error) {
 	var response ReportStatusResponse
 
 	header := http.Header{}
@@ -47,7 +57,11 @@ func (c *SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, err
 	return response, nil
 }
 
-func (c *SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
+func (c SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
+	c.depwarn("DownloadReport", "DownloadReportByID")
+	return c.DownloadReportByID(reportID)
+}
+func (c SASTClient) DownloadReportByID(reportID uint64) ([]byte, error) {
 	header := http.Header{}
 	header.Set("Accept", "application/json")
 	data, err := c.sendRequest(http.MethodGet, fmt.Sprintf("/reports/sastScan/%d", reportID), nil, header)
@@ -58,7 +72,11 @@ func (c *SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
 }
 
 // convenience function
-func (c *SASTClient) GenerateAndDownloadReport(scanID uint64, reportType string) ([]byte, error) {
+func (c SASTClient) GenerateAndDownloadReport(scanID uint64, reportType string) ([]byte, error) {
+	c.depwarn("GenerateAndDownloadReport", "GenerateAndDownloadReportByID")
+	return c.GenerateAndDownloadReportByID(scanID, reportType)
+}
+func (c SASTClient) GenerateAndDownloadReportByID(scanID uint64, reportType string) ([]byte, error) {
 	var reportBytes []byte
 	report, err := c.RequestNewReport(scanID, reportType)
 
