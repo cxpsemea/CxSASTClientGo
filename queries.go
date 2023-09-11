@@ -31,8 +31,8 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 							Language        uint64
 							LanguageName    string
 							PackageTypeName string
-							ProjectID       uint64
-							OwningTeam      uint64
+							ProjectID       int64
+							OwningTeam      int64
 						} `xml:"CxWSQueryGroup"`
 					}
 				}
