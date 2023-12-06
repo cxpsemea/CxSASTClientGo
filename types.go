@@ -140,9 +140,9 @@ type QueryGroup struct {
 	PackageID       uint64
 	Queries         []Query
 	Language        string `xml:"languageName"`
-	OwningProjectID uint64 `xml:"ProjectId"`
+	OwningProjectID int64  `xml:"ProjectId"`
 	PackageType     string `xml:"PackageTypeName"`
-	OwningTeamID    uint64 `xml:"OwningTeam"`
+	OwningTeamID    int64  `xml:"OwningTeam"`
 }
 
 type QueryLanguage struct {
@@ -199,6 +199,7 @@ type Scan struct {
 
 type ScanResult struct {
 	QueryName         string
+	QueryID           uint64
 	PathID            uint64
 	Line              uint64
 	Column            uint64
