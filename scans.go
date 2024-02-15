@@ -47,3 +47,14 @@ func (c SASTClient) GetLastScanByID(projectid uint64) (Scan, error) {
 
 	return scans[0], nil
 }
+
+func (c SASTClient) GetEngineConfigurations() ([]EngineConfiguration, error) {
+	var confs []EngineConfiguration
+	response, err := c.get("/sast/engineConfigurations")
+	if err != nil {
+		return confs, err
+	}
+
+	err = json.Unmarshal(response, &confs)
+	return confs, err
+}

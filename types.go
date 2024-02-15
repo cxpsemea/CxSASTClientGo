@@ -24,6 +24,30 @@ type AuthenticationProvider struct {
 	Active       bool
 }
 
+const (
+	PreScanAction  = iota
+	PostScanAction = iota
+)
+
+type CustomTask struct {
+	ID   uint
+	Name string
+	Type int
+	Data string
+}
+
+type EngineConfiguration struct {
+	ID   uint
+	Name string
+}
+
+type IssueTracker struct {
+	ID   uint
+	Name string
+	Type string
+	URL  string
+}
+
 type Link struct {
 	Rel string `json:"rel"`
 	URI string `json:"uri"`
@@ -171,6 +195,13 @@ type ReportStatusResponse struct {
 type ReportStatus struct {
 	ID    int    `json:"id"`
 	Value string `json:"value"`
+}
+
+type ResultState struct {
+	Name       string `xml:"ResultName"`
+	ID         uint   `xml:"ResultID"`
+	Permission string `xml:"ResultPermission"`
+	IsCustom   bool
 }
 
 type Role struct {
