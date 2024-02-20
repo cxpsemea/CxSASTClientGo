@@ -43,18 +43,16 @@ func (c *SASTCache) matchTeamUsers() {
 			}
 		}
 	}
-
 	// second check if there is inherited access
-	for tid := range c.Teams {
+	for tid, team := range c.Teams {
 		for _, user := range c.Users {
-			for stid := uint64(tid); stid > 0; stid = c.Teams[stid].ParentID {
+			for stid := team.ParentID; stid > 0; stid = c.TeamsByID[stid].ParentID {
 				if user.IsInTeam(stid) && !slices.Contains(c.Teams[tid].InheritedUsers, user.UserID) && !slices.Contains(c.Teams[tid].Users, user.UserID) {
 					c.Teams[tid].InheritedUsers = append(c.Teams[tid].InheritedUsers, user.UserID)
 				}
 			}
 		}
 	}
-
 }
 
 func (c *SASTCache) PresetSummary() string {
