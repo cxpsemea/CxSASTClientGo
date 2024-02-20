@@ -37,3 +37,12 @@ func (c SASTClient) GetCurrentUser() (User, error) {
 func (c SASTClient) UserLink(u *User) string {
 	return fmt.Sprintf("%v/CxRestAPI/auth/#/users?id=%d", c.baseUrl, u.UserID) // this link doesn't actually work, just takes you to the main page
 }
+
+func (u User) IsInTeam(teamID uint64) bool {
+	for _, t := range u.TeamIDs {
+		if t == teamID {
+			return true
+		}
+	}
+	return false
+}

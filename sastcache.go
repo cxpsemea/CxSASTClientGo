@@ -2,18 +2,22 @@ package CxSASTClientGo
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/pkg/errors"
 )
 
 type SASTCache struct {
-	Projects []Project
-	Teams    []Team
-	Users    []User
-	Queries  QueryCollection
-	Presets  []Preset
-	Roles    []Role
+	Projects     []Project
+	ProjectsByID map[uint64]*Project
+	Teams        []Team
+	TeamsByID    map[uint64]*Team
+	Users        []User
+	UsersByID    map[uint64]*User
+	Queries      QueryCollection
+	Presets      []Preset
+	Roles        []Role
 }
 
 func (c *SASTCache) String() string {
@@ -21,13 +25,36 @@ func (c *SASTCache) String() string {
 }
 
 func (c *SASTCache) matchTeamProjects() {
-	for index := range c.Teams {
-		for _, project := range c.Projects {
-			if c.Teams[index].TeamID == project.TeamID {
-				c.Teams[index].Projects = append(c.Teams[index].Projects, project)
+	for tid := range c.Teams {
+		for id, project := range c.Projects {
+			if c.Teams[tid].TeamID == project.TeamID {
+				c.Teams[tid].Projects = append(c.Teams[tid].Projects, &c.Projects[id])
 			}
 		}
 	}
+}
+
+func (c *SASTCache) matchTeamUsers() {
+	// first check for direct assignment
+	for tid := range c.Teams {
+		for _, user := range c.Users {
+			if user.IsInTeam(c.Teams[tid].TeamID) {
+				c.Teams[tid].Users = append(c.Teams[tid].Users, user.UserID)
+			}
+		}
+	}
+
+	// second check if there is inherited access
+	for tid := range c.Teams {
+		for _, user := range c.Users {
+			for stid := uint64(tid); stid > 0; stid = c.Teams[stid].ParentID {
+				if user.IsInTeam(stid) && !slices.Contains(c.Teams[tid].InheritedUsers, user.UserID) && !slices.Contains(c.Teams[tid].Users, user.UserID) {
+					c.Teams[tid].InheritedUsers = append(c.Teams[tid].InheritedUsers, user.UserID)
+				}
+			}
+		}
+	}
+
 }
 
 func (c *SASTCache) PresetSummary() string {
@@ -57,6 +84,7 @@ func (c *SASTCache) ProjectSummary() string {
 func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	var err error
 	c.Projects, err = client.GetProjects()
+	client.logger.Info("Refreshing projects in cache")
 
 	if err != nil {
 		client.logger.Errorf("Failed while retrieving projects: %s", err)
@@ -72,28 +100,46 @@ func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 		}
 	}
 
+	c.ProjectsByID = make(map[uint64]*Project)
+	for id, project := range c.Projects {
+		c.ProjectsByID[project.ProjectID] = &c.Projects[id]
+	}
+
 	return nil
 }
 
 func (c *SASTCache) RefreshTeams(client *SASTClient) error {
+	client.logger.Info("Refreshing teams in cache")
 	var err error
 	c.Teams, err = client.GetTeams()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve teams: %s", err)
 	}
+
+	c.TeamsByID = make(map[uint64]*Team)
+	for id, team := range c.Teams {
+		c.TeamsByID[team.TeamID] = &c.Teams[id]
+	}
 	return nil
 }
 
 func (c *SASTCache) RefreshUsers(client *SASTClient) error {
+	client.logger.Info("Refreshing users in cache")
 	var err error
 	c.Users, err = client.GetUsers()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve users: %s", err)
 	}
+
+	c.UsersByID = make(map[uint64]*User)
+	for id, user := range c.Users {
+		c.UsersByID[user.UserID] = &c.Users[id]
+	}
 	return nil
 }
 
 func (c *SASTCache) RefreshQueries(client *SASTClient) error {
+	client.logger.Info("Refreshing queries in cache")
 	_, soap := client.ClientsValid()
 	var err error
 	if soap {
@@ -106,6 +152,7 @@ func (c *SASTCache) RefreshQueries(client *SASTClient) error {
 }
 
 func (c *SASTCache) RefreshPresets(client *SASTClient) error {
+	client.logger.Info("Refreshing presets in cache")
 	var err error
 	c.Presets, err = client.GetPresets()
 	if err != nil {
@@ -125,6 +172,7 @@ func (c *SASTCache) RefreshPresets(client *SASTClient) error {
 }
 
 func (c *SASTCache) RefreshRoles(client *SASTClient) error {
+	client.logger.Info("Refreshing roles in cache")
 	var err error
 	c.Roles, err = client.GetRoles()
 	if err != nil {
@@ -170,15 +218,20 @@ func (c *SASTCache) Refresh(client *SASTClient) []error {
 	}
 
 	c.matchTeamProjects()
+	c.matchTeamUsers()
 
 	return errors
 }
 
 func (c *SASTCache) GetTeam(teamID uint64) (*Team, error) {
-	for id, t := range c.Teams {
+	/*for id, t := range c.Teams {
 		if t.TeamID == teamID {
 			return &c.Teams[id], nil
 		}
+	}*/
+	val, ok := c.TeamsByID[teamID]
+	if ok {
+		return val, nil
 	}
 	return nil, errors.New("No such team")
 }
@@ -201,10 +254,14 @@ func (c *SASTCache) GetTeamsByParentID(parentID uint64) []*Team {
 }
 
 func (c *SASTCache) GetUser(userID uint64) (*User, error) {
-	for id, g := range c.Users {
+	/*for id, g := range c.Users {
 		if g.UserID == userID {
 			return &c.Users[id], nil
 		}
+	}*/
+	val, ok := c.UsersByID[userID]
+	if ok {
+		return val, nil
 	}
 	return nil, errors.New("No such user")
 }
@@ -249,10 +306,15 @@ func (c *SASTCache) GetUsersInTeams(teams []Team) []*User {
 }
 
 func (c *SASTCache) GetProject(projectID uint64) (*Project, error) {
-	for id, g := range c.Projects {
+	/*for id, g := range c.Projects {
 		if g.ProjectID == projectID {
 			return &c.Projects[id], nil
 		}
+	}*/
+
+	val, ok := c.ProjectsByID[projectID]
+	if ok {
+		return val, nil
 	}
 	return nil, errors.New("No such project")
 }

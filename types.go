@@ -15,6 +15,12 @@ type SASTClient struct {
 	CurrentUser *User
 }
 
+type ApplicationVersion struct {
+	ApplicationVersion string
+	EnginePack         string
+	HotFix             int
+}
+
 type AuthenticationProvider struct {
 	ID           uint64
 	Name         string
@@ -25,14 +31,14 @@ type AuthenticationProvider struct {
 }
 
 const (
-	PreScanAction  = iota
-	PostScanAction = iota
+	PreScanAction  = "SOURCE_CONTROL_COMMAND"
+	PostScanAction = "POST_SCAN_COMMAND"
 )
 
 type CustomTask struct {
 	ID   uint
 	Name string
-	Type int
+	Type string
 	Data string
 }
 
@@ -275,11 +281,13 @@ type ScanSettings struct {
 }
 
 type Team struct {
-	TeamID   uint64 `json:"id"`
-	Name     string
-	FullName string
-	ParentID uint64
-	Projects []Project
+	TeamID         uint64 `json:"id"`
+	Name           string
+	FullName       string
+	ParentID       uint64
+	Projects       []*Project
+	Users          []uint64
+	InheritedUsers []uint64
 }
 
 type User struct {
