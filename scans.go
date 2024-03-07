@@ -83,7 +83,7 @@ func (c SASTClient) GetEngineConfigurationsSOAP() ([]EngineConfiguration, error)
 						XMLName    xml.Name `xml:"ConfigSetList"`
 						ConfigSets []struct {
 							ConfigSetName string
-							ID            uint
+							ID            uint64
 						} `xml:"ConfigurationSet"`
 					}
 				}

@@ -36,19 +36,19 @@ const (
 )
 
 type CustomTask struct {
-	ID   uint
+	ID   uint64
 	Name string
 	Type string
 	Data string
 }
 
 type EngineConfiguration struct {
-	ID   uint
+	ID   uint64
 	Name string
 }
 
 type IssueTracker struct {
-	ID   uint
+	ID   uint64
 	Name string
 	Type string
 	URL  string
