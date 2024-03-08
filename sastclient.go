@@ -27,9 +27,9 @@ func (c SASTClient) createRequest(method, url string, body io.Reader, header *ht
 		}
 	}
 
-	//if request.Header.Get("Authorization") == "" {
-	//	request.Header.Set("Authorization", "Bearer "+c.authToken)
-	//}
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
 
 	if request.Header.Get("User-Agent") == "" {
 		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0")
