@@ -156,13 +156,14 @@ type ProjectSettings struct {
 }
 
 type Query struct {
-	Name      string
-	QueryID   uint64 `xml:"QueryId"`
-	CWE       uint64 `xml:"Cwe"`
-	Severity  int
-	PackageID uint64 `xml:"PackageId"`
-	Language  string
-	Group     string
+	Name         string
+	QueryID      uint64 `xml:"QueryId"`
+	CWE          uint64 `xml:"Cwe"`
+	Severity     int
+	PackageID    uint64 `xml:"PackageId"`
+	Language     string
+	Group        string
+	IsExecutable bool `xml:"IsExecutable"`
 }
 
 type QueryGroup struct {
