@@ -2,6 +2,7 @@ package CxSASTClientGo
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -46,4 +47,68 @@ func (c SASTClient) GetLastScanByID(projectid uint64) (Scan, error) {
 	}
 
 	return scans[0], nil
+}
+
+func (c SASTClient) GetEngineConfigurations() ([]EngineConfiguration, error) {
+	var confs []EngineConfiguration
+	response, err := c.get("/sast/engineConfigurations")
+	if err != nil {
+		return confs, err
+	}
+
+	err = json.Unmarshal(response, &confs)
+	return confs, err
+}
+
+func (c SASTClient) GetEngineConfigurationsSOAP() ([]EngineConfiguration, error) {
+	var confs []EngineConfiguration
+
+	response, err := c.sendSOAPRequest("GetConfigurationSetList", "<SessionID></SessionID>")
+	if err != nil {
+		return confs, err
+	}
+
+	var xmlResponse struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			XMLName  xml.Name `xml:"Body"`
+			Response struct {
+				XMLName xml.Name `xml:"GetConfigurationSetListResponse"`
+				Result  struct {
+					XMLName      xml.Name `xml:"GetConfigurationSetListResult"`
+					IsSuccesfull bool     `xml:"IsSuccesfull"`
+					ErrorMessage string
+
+					ConfigSetList struct {
+						XMLName    xml.Name `xml:"ConfigSetList"`
+						ConfigSets []struct {
+							ConfigSetName string
+							ID            uint64
+						} `xml:"ConfigurationSet"`
+					}
+				}
+			}
+		}
+	}
+
+	err = xml.Unmarshal(response, &xmlResponse)
+	if err != nil {
+		c.logger.Errorf("Failed to parse SOAP response: %s", err)
+		c.logger.Tracef("Parsed from: %v", string(response))
+		return confs, err
+	}
+
+	if !xmlResponse.Body.Response.Result.IsSuccesfull {
+		return confs, fmt.Errorf("failed to get engine configurations: %v", xmlResponse.Body.Response.Result.ErrorMessage)
+	}
+
+	confs = make([]EngineConfiguration, len(xmlResponse.Body.Response.Result.ConfigSetList.ConfigSets))
+	for id, conf := range xmlResponse.Body.Response.Result.ConfigSetList.ConfigSets {
+		confs[id] = EngineConfiguration{
+			ID:   conf.ID,
+			Name: conf.ConfigSetName,
+		}
+	}
+
+	return confs, err
 }

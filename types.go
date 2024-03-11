@@ -15,6 +15,12 @@ type SASTClient struct {
 	CurrentUser *User
 }
 
+type ApplicationVersion struct {
+	ApplicationVersion string
+	EnginePack         string
+	HotFix             int
+}
+
 type AuthenticationProvider struct {
 	ID           uint64
 	Name         string
@@ -22,6 +28,30 @@ type AuthenticationProvider struct {
 	ProviderType string
 	IsExternal   bool
 	Active       bool
+}
+
+const (
+	PreScanAction  = "SOURCE_CONTROL_COMMAND"
+	PostScanAction = "POST_SCAN_COMMAND"
+)
+
+type CustomTask struct {
+	ID   uint64
+	Name string
+	Type string
+	Data string
+}
+
+type EngineConfiguration struct {
+	ID   uint64
+	Name string
+}
+
+type IssueTracker struct {
+	ID   uint64
+	Name string
+	Type string
+	URL  string
 }
 
 type Link struct {
@@ -173,6 +203,13 @@ type ReportStatus struct {
 	Value string `json:"value"`
 }
 
+type ResultState struct {
+	Name       string `xml:"ResultName"`
+	ID         uint   `xml:"ResultID"`
+	Permission string `xml:"ResultPermission"`
+	IsCustom   bool
+}
+
 type Role struct {
 	RoleID        uint64 `json:"id"`
 	IsSystemRole  bool
@@ -245,11 +282,13 @@ type ScanSettings struct {
 }
 
 type Team struct {
-	TeamID   uint64 `json:"id"`
-	Name     string
-	FullName string
-	ParentID uint64
-	Projects []Project
+	TeamID         uint64 `json:"id"`
+	Name           string
+	FullName       string
+	ParentID       uint64
+	Projects       []*Project
+	Users          []uint64
+	InheritedUsers []uint64
 }
 
 type User struct {

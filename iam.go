@@ -31,6 +31,10 @@ func (c SASTClient) GetAuthenticationProviders() ([]AuthenticationProvider, erro
 	return providers, err
 }
 
+func (c *AuthenticationProvider) String() string {
+	return fmt.Sprintf("[%d] %v (%v)", c.ID, c.Name, c.ProviderType)
+}
+
 func (c SASTClient) GetOIDCClients() ([]OIDCClient, error) {
 	c.logger.Trace("Fetching OIDC Clients")
 

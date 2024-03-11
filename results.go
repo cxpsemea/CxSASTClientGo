@@ -146,6 +146,55 @@ func (c SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary
 	return summary
 }
 
+func (c SASTClient) GetResultStateListSOAP() ([]ResultState, error) {
+	response, err := c.sendSOAPRequest("GetResultStateList", "<sessionID></sessionID>")
+	if err != nil {
+		return []ResultState{}, err
+	}
+
+	var xmlResponse struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Body    struct {
+			XMLName  xml.Name `xml:"Body"`
+			Response struct {
+				XMLName xml.Name `xml:"GetResultStateListResponse"`
+				Result  struct {
+					XMLName         xml.Name `xml:"GetResultStateListResult"`
+					IsSuccesfull    bool     `xml:"IsSuccesfull"`
+					ErrorMessage    string
+					ResultStateList struct {
+						XMLName      xml.Name      `xml:"ResultStateList"`
+						ResultStates []ResultState `xml:"ResultState"`
+					}
+				}
+			}
+		}
+	}
+
+	err = xml.Unmarshal(response, &xmlResponse)
+	if err != nil {
+		return []ResultState{}, err
+	}
+
+	if !xmlResponse.Body.Response.Result.IsSuccesfull {
+		return []ResultState{}, fmt.Errorf("soap error: %v", xmlResponse.Body.Response.Result.ErrorMessage)
+	}
+
+	resultStates := xmlResponse.Body.Response.Result.ResultStateList.ResultStates
+	default_states := []string{"To Verify", "Not Exploitable", "Confirmed", "Urgent", "Proposed Not Exploitable"}
+	for id := range resultStates {
+		if resultStates[id].ID < uint(len(default_states)) {
+			if resultStates[id].Name != default_states[resultStates[id].ID] {
+				resultStates[id].IsCustom = true
+			}
+		} else {
+			resultStates[id].IsCustom = true
+		}
+	}
+
+	return xmlResponse.Body.Response.Result.ResultStateList.ResultStates, err
+}
+
 func (s ScanResultStatusSummary) Total() uint64 {
 	return s.ToVerify + s.Confirmed + s.Urgent + s.ProposedNotExploitable + s.NotExploitable
 }

@@ -10,6 +10,12 @@ import (
 func (t Team) HasProjects() bool {
 	return len(t.Projects) > 0
 }
+func (t Team) HasUsers() bool {
+	return len(t.Users) > 0
+}
+func (t Team) HasInheritedUsers() bool {
+	return len(t.InheritedUsers) > 0
+}
 
 // Teams
 func (t *Team) String() string {
