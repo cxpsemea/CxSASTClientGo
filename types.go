@@ -127,6 +127,7 @@ type Project struct {
 	SourceType   string
 	Settings     *ProjectSettings
 	Repo         *ProjectRepo
+	Filters      *SourceFilters
 	CustomFields []ProjectCustomField
 }
 
@@ -279,6 +280,13 @@ type ScanSettings struct {
 	PresetID               uint64  `json:"presetId"`
 	EngineConfigurationID  uint64  `json:"engineConfigurationId"`
 	ZippedSource           *[]byte `json:"zippedSource,omitempty"`
+}
+
+type SourceFilters struct {
+	ProjectID      uint64 `json:"projectId"`
+	FoldersPattern string `json:"excludeFoldersPattern"`
+	FilesPattern   string `json:"excludeFilesPattern"`
+	PathPattern    string `json:"pathFilter"`
 }
 
 type Team struct {
