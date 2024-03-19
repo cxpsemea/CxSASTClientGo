@@ -306,6 +306,8 @@ type User struct {
 	UserName      string
 	LastLoginDate string
 	Email         string
+	IDPID         uint64 `json:"authenticationProviderId"`
 	RoleIDs       []uint64
 	TeamIDs       []uint64
+	AccessToUI    bool `json:"accessToUi"`
 }
