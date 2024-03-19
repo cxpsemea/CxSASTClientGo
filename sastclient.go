@@ -44,7 +44,7 @@ func (c SASTClient) createRequest(method, url string, body io.Reader, header *ht
 
 func (c SASTClient) sendRequestInternal(client *http.Client, method, url string, body io.Reader, header http.Header) ([]byte, error) {
 	var bodyBytes []byte
-	c.logger.Debugf("Sending request to URL %v", url)
+	c.logger.Tracef("Sending request to URL %v", url)
 	if body != nil {
 		closer := io.NopCloser(body)
 		bodyBytes, _ = io.ReadAll(closer)
