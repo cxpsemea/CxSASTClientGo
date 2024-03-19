@@ -44,7 +44,7 @@ func (c SASTClient) createRequest(method, url string, body io.Reader, header *ht
 
 func (c SASTClient) sendRequestInternal(client *http.Client, method, url string, body io.Reader, header http.Header) ([]byte, error) {
 	var bodyBytes []byte
-	c.logger.Debugf("Sending request to URL %v", url)
+	c.logger.Tracef("Sending request to URL %v", url)
 	if body != nil {
 		closer := io.NopCloser(body)
 		bodyBytes, _ = io.ReadAll(closer)
@@ -75,7 +75,7 @@ func (c SASTClient) sendRequestInternal(client *http.Client, method, url string,
 			resBody, _ = io.ReadAll(response.Body)
 		}
 		c.recordRequestDetailsInErrorCase(bodyBytes, resBody)
-		c.logger.Errorf("HTTP response indicates error: %v", response.Status)
+		//c.logger.Errorf("HTTP response indicates error: %v", response.Status)
 		return resBody, errors.New("HTTP Response: " + response.Status)
 	}
 	defer response.Body.Close()
@@ -119,10 +119,10 @@ func (c SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) 
 
 func (c SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte) {
 	if len(requestBody) != 0 {
-		c.logger.Errorf("Request body: %s", string(requestBody))
+		c.logger.Tracef("Request body: %s", string(requestBody))
 	}
 	if len(responseBody) != 0 {
-		c.logger.Errorf("Response body: %s", string(responseBody))
+		c.logger.Tracef("Response body: %s", string(responseBody))
 	}
 }
 

@@ -127,6 +127,7 @@ type Project struct {
 	SourceType   string
 	Settings     *ProjectSettings
 	Repo         *ProjectRepo
+	Filters      *SourceFilters
 	CustomFields []ProjectCustomField
 }
 
@@ -282,6 +283,13 @@ type ScanSettings struct {
 	ZippedSource           *[]byte `json:"zippedSource,omitempty"`
 }
 
+type SourceFilters struct {
+	ProjectID      uint64 `json:"projectId"`
+	FoldersPattern string `json:"excludeFoldersPattern"`
+	FilesPattern   string `json:"excludeFilesPattern"`
+	PathPattern    string `json:"pathFilter"`
+}
+
 type Team struct {
 	TeamID         uint64 `json:"id"`
 	Name           string
@@ -299,6 +307,8 @@ type User struct {
 	UserName      string
 	LastLoginDate string
 	Email         string
+	IDPID         uint64 `json:"authenticationProviderId"`
 	RoleIDs       []uint64
 	TeamIDs       []uint64
+	AccessToUI    bool `json:"accessToUi"`
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func (p *Project) String() string {
@@ -118,6 +119,11 @@ func (c SASTClient) GetProjectSettings(project *Project) error {
 		return err
 	}
 	project.Settings = &settings
+
+	if project.SourceType != "local" {
+		c.GetProjectRepository(project)
+	}
+	c.GetProjectSourceFilters(project)
 	return nil
 }
 
@@ -191,6 +197,27 @@ func (c SASTClient) GetProjectRepository(project *Project) error {
 	}
 
 	project.Repo = &pr
+	return nil
+}
+
+func (c SASTClient) GetProjectSourceFilters(project *Project) error {
+	response, err := c.get(fmt.Sprintf("/projects/%d/sourceCode/excludeSettings", project.ProjectID))
+
+	if err != nil && err.Error() == "HTTP Response: 501 Not Implemented" {
+		response, err = c.getV(fmt.Sprintf("/projects/%d/sourceCode/pathFilter", project.ProjectID), "5.0")
+	}
+	if err != nil {
+		c.logger.Errorf("Failed to get source filters for project %v: %s", project.String(), err)
+		return err
+	}
+
+	var filters SourceFilters
+	err = json.Unmarshal(response, &filters)
+	if err != nil {
+		return err
+	}
+
+	project.Filters = &filters
 	return nil
 }
 
@@ -321,6 +348,72 @@ func (c SASTClient) UploadBytesForProjectByID(projectID uint64, fileContents *[]
 	}
 
 	return nil
+}
+
+func (f SourceFilters) HasFilters() bool {
+	return f.FilesPattern != "" || f.FoldersPattern != "" || f.PathPattern != ""
+}
+
+func (f SourceFilters) ToGlob() string {
+	glob := []string{}
+
+	if g := f.filesToGlob(); g != "" {
+		glob = append(glob, g)
+	}
+
+	if g := f.foldersToGlob(); g != "" {
+		glob = append(glob, g)
+	}
+
+	if f.PathPattern != "" {
+		glob = append(glob, f.PathPattern)
+	}
+
+	return strings.Join(glob, ",")
+}
+
+func (f SourceFilters) filesToGlob() string {
+	if f.FilesPattern == "" {
+		return ""
+	}
+
+	globs := []string{}
+	for _, filter := range strings.Split(f.FilesPattern, ",") {
+		f := strings.TrimSpace(filter)
+		if f[0:1] == "!" {
+			globs = append(globs, strings.ReplaceAll(f[1:], "\\", "/"))
+		} else {
+			globs = append(globs, "!"+strings.ReplaceAll(f, "\\", "/"))
+		}
+	}
+
+	if len(globs) > 0 {
+		return strings.Join(globs, ",")
+	} else {
+		return ""
+	}
+}
+
+func (f SourceFilters) foldersToGlob() string {
+	if f.FoldersPattern == "" {
+		return ""
+	}
+
+	globs := []string{}
+	for _, filter := range strings.Split(f.FoldersPattern, ",") {
+		f := strings.TrimSpace(filter)
+		if f[0:1] == "!" {
+			globs = append(globs, "**/"+strings.ReplaceAll(f[1:], "\\", "/")+"/**")
+		} else {
+			globs = append(globs, "!**/"+strings.ReplaceAll(f, "\\", "/")+"/**")
+		}
+	}
+
+	if len(globs) > 0 {
+		return strings.Join(globs, ",")
+	} else {
+		return ""
+	}
 }
 
 /*
