@@ -9,6 +9,23 @@ import (
 )
 
 func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
+	qc := QueryCollection{
+		QueryLanguages: make([]QueryLanguage, 0),
+	}
+
+	c.logger.Debug("Get SAST Query Collection SOAP")
+	response, err := c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+	if err != nil {
+		return qc, err
+	}
+
+	err = qc.FromXML(response)
+	return qc, err
+}
+
+func (qc *QueryCollection) FromXML(response []byte) error {
+	qc.QueryLanguages = make([]QueryLanguage, 0)
+
 	var xmlResponse struct {
 		XMLName xml.Name `xml:"Envelope"`
 		Body    struct {
@@ -40,27 +57,13 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 		}
 	}
 
-	qc := QueryCollection{
-		QueryLanguages: make([]QueryLanguage, 0),
-	}
-
-	c.logger.Debug("Get SAST Query Collection SOAP")
-	response, err := c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+	err := xml.Unmarshal(response, &xmlResponse)
 	if err != nil {
-		return qc, err
-	}
-
-	err = xml.Unmarshal(response, &xmlResponse)
-	if err != nil {
-		c.logger.Errorf("Failed to parse SOAP response: %s", err)
-		c.logger.Tracef("Parsed from: %v", string(response))
-		return qc, err
+		return errors.New(fmt.Sprintf("Failed to parse SOAP response: %s", err))
 	}
 
 	if !xmlResponse.Body.Response.Result.IsSuccesfull {
-		c.logger.Errorf("SOAP request error: %v", xmlResponse.Body.Response.Result.ErrorMessage)
-		c.logger.Infof("Full response: %v", string(response))
-		return qc, errors.New(fmt.Sprintf("SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage))
+		return errors.New(fmt.Sprintf("SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage))
 	}
 
 	languageIDs := map[string]uint64{}
@@ -87,7 +90,7 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 
 		languageIDs[g.LanguageName] = g.Language
 	}
-	return qc, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+	return nil
 }
 
 func (qc *QueryCollection) GetQueryLanguage(language string) *QueryLanguage {
@@ -169,6 +172,21 @@ func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 	}
 
 	return cqc
+}
+
+func (qc *QueryCollection) String() string {
+	languages := len(qc.QueryLanguages)
+	groups := 0
+	queries := 0
+
+	for _, ql := range qc.QueryLanguages {
+		groups += len(ql.QueryGroups)
+		for _, qg := range ql.QueryGroups {
+			queries += len(qg.Queries)
+		}
+	}
+
+	return fmt.Sprintf("Query collection with %d languages, %d groups, and %d queries", languages, groups, queries)
 }
 
 func (c SASTClient) GetQueryByID(qid uint64, queries *[]Query) *Query {
