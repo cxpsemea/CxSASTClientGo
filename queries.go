@@ -78,11 +78,15 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 			}
 
 			q.Group = g.Name
-			qg := ql.GetQueryGroup(q.Group)
+			//fmt.Printf("Looking for group %v %v - %d\n", g.PackageTypeName, g.Name, g.PackageId)
+			qg := ql.GetQueryGroupByID(q.PackageID)
+
 			if qg == nil {
 				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectID, g.PackageTypeName, g.OwningTeam})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 			}
+
+			//fmt.Printf("Found group %v %v - %d\n", qg.PackageType, qg.Name, qg.PackageID)
 
 			qg.Queries = append(qg.Queries, q)
 
@@ -108,7 +112,7 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 		ql = &qc.QueryLanguages[len(qc.QueryLanguages)-1]
 	}
 
-	qg := ql.GetQueryGroup(g.Name)
+	qg := ql.GetQueryGroupByID(g.PackageID)
 	if qg == nil {
 		ql.QueryGroups = append(ql.QueryGroups, QueryGroup{Name: g.Name, PackageID: g.PackageID, Queries: []Query{}, Language: g.Language, OwningProjectID: g.OwningProjectID, PackageType: g.PackageType, OwningTeamID: g.OwningTeamID})
 		qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
@@ -120,6 +124,14 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 func (ql *QueryLanguage) GetQueryGroup(group string) *QueryGroup {
 	for id := range ql.QueryGroups {
 		if ql.QueryGroups[id].Name == group {
+			return &ql.QueryGroups[id]
+		}
+	}
+	return nil
+}
+func (ql *QueryLanguage) GetQueryGroupByID(packageId uint64) *QueryGroup {
+	for id := range ql.QueryGroups {
+		if ql.QueryGroups[id].PackageID == packageId {
 			return &ql.QueryGroups[id]
 		}
 	}
