@@ -23,6 +23,11 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 	return qc, err
 }
 
+func (c SASTClient) GetQueriesSOAPRaw() ([]byte, error) {
+	c.logger.Debug("Get SAST Query Collection SOAP - Raw XML")
+	return c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+}
+
 func (qc *QueryCollection) FromXML(response []byte) error {
 	qc.QueryLanguages = make([]QueryLanguage, 0)
 
@@ -48,7 +53,8 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 							Language        uint64
 							LanguageName    string
 							PackageTypeName string
-							ProjectID       uint64
+							PackageType     string
+							ProjectId       uint64
 							OwningTeam      uint64
 						} `xml:"CxWSQueryGroup"`
 					}
@@ -78,15 +84,23 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 			}
 
 			q.Group = g.Name
-			//fmt.Printf("Looking for group %v %v - %d\n", g.PackageTypeName, g.Name, g.PackageId)
 			qg := ql.GetQueryGroupByID(q.PackageID)
 
+			if q.QueryID == 100022 {
+				fmt.Printf("Query is: %v", q.Name)
+				fmt.Printf("Looking for group %v %v - %d\n", g.PackageTypeName, g.Name, g.PackageId)
+			}
+
 			if qg == nil {
-				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectID, g.PackageTypeName, g.OwningTeam})
+				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
+					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, g.OwningTeam,
+				})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 			}
 
-			//fmt.Printf("Found group %v %v - %d\n", qg.PackageType, qg.Name, qg.PackageID)
+			if q.QueryID == 100022 {
+				fmt.Printf("Found group %v %v - %d\n", qg.PackageType, qg.Name, qg.PackageID)
+			}
 
 			qg.Queries = append(qg.Queries, q)
 
@@ -114,7 +128,15 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 
 	qg := ql.GetQueryGroupByID(g.PackageID)
 	if qg == nil {
-		ql.QueryGroups = append(ql.QueryGroups, QueryGroup{Name: g.Name, PackageID: g.PackageID, Queries: []Query{}, Language: g.Language, OwningProjectID: g.OwningProjectID, PackageType: g.PackageType, OwningTeamID: g.OwningTeamID})
+		ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
+			Name:            g.Name,
+			PackageID:       g.PackageID,
+			Queries:         []Query{},
+			Language:        g.Language,
+			OwningProjectID: g.OwningProjectID,
+			PackageType:     g.PackageType,
+			OwningTeamID:    g.OwningTeamID,
+		})
 		qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 	}
 
@@ -221,7 +243,15 @@ func (q *Query) String() string {
 	return fmt.Sprintf("[%d] %v -> %v -> %v", q.QueryID, q.Language, q.Group, q.Name)
 }
 func (q *QueryGroup) String() string {
-	return fmt.Sprintf("[%d] %v -> %v", q.PackageID, q.Language, q.Name)
+	typeStr := "Cx Default"
+	if q.PackageType == "Team" {
+		typeStr = fmt.Sprintf("Team %d override", q.OwningTeamID)
+	} else if q.PackageType == "Project" {
+		typeStr = fmt.Sprintf("Project %d override", q.OwningProjectID)
+	} else if q.PackageType == "Corporate" {
+		typeStr = "Corp override"
+	}
+	return fmt.Sprintf("%v group [%d] %v -> %v", typeStr, q.PackageID, q.Language, q.Name)
 }
 func (q *QueryLanguage) String() string {
 	return q.Name
