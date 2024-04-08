@@ -86,20 +86,11 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 			q.Group = g.Name
 			qg := ql.GetQueryGroupByID(q.PackageID)
 
-			if q.QueryID == 100022 {
-				fmt.Printf("Query is: %v", q.Name)
-				fmt.Printf("Looking for group %v %v - %d\n", g.PackageTypeName, g.Name, g.PackageId)
-			}
-
 			if qg == nil {
 				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
 					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, g.OwningTeam,
 				})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
-			}
-
-			if q.QueryID == 100022 {
-				fmt.Printf("Found group %v %v - %d\n", qg.PackageType, qg.Name, qg.PackageID)
 			}
 
 			qg.Queries = append(qg.Queries, q)
