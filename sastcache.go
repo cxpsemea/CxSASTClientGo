@@ -10,11 +10,11 @@ import (
 
 type SASTCache struct {
 	Projects     []Project
-	ProjectsByID map[uint64]*Project
+	ProjectsByID map[uint64]*Project `json:"-"`
 	Teams        []Team
-	TeamsByID    map[uint64]*Team
+	TeamsByID    map[uint64]*Team `json:"-"`
 	Users        []User
-	UsersByID    map[uint64]*User
+	UsersByID    map[uint64]*User `json:"-"`
 	Queries      QueryCollection
 	Presets      []Preset
 	Roles        []Role
