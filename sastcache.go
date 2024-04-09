@@ -24,7 +24,7 @@ func (c *SASTCache) String() string {
 	return fmt.Sprintf("%d Projects, %d Teams, %d Users, %d QueryLanguages, %d Presets, %d Roles", len(c.Projects), len(c.Teams), len(c.Users), len(c.Queries.QueryLanguages), len(c.Presets), len(c.Roles))
 }
 
-func (c *SASTCache) matchTeamProjects() {
+func (c *SASTCache) MatchTeamProjects() {
 	for tid := range c.Teams {
 		for id, project := range c.Projects {
 			if c.Teams[tid].TeamID == project.TeamID {
@@ -34,7 +34,7 @@ func (c *SASTCache) matchTeamProjects() {
 	}
 }
 
-func (c *SASTCache) matchTeamUsers() {
+func (c *SASTCache) MatchTeamUsers() {
 	// first check for direct assignment
 	for tid := range c.Teams {
 		for _, user := range c.Users {
@@ -98,12 +98,16 @@ func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 		}
 	}
 
+	c.GenerateProjectIDMap()
+
+	return nil
+}
+
+func (c *SASTCache) GenerateProjectIDMap() {
 	c.ProjectsByID = make(map[uint64]*Project)
 	for id, project := range c.Projects {
 		c.ProjectsByID[project.ProjectID] = &c.Projects[id]
 	}
-
-	return nil
 }
 
 func (c *SASTCache) RefreshTeams(client *SASTClient) error {
@@ -114,11 +118,15 @@ func (c *SASTCache) RefreshTeams(client *SASTClient) error {
 		return fmt.Errorf("failed to retrieve teams: %s", err)
 	}
 
+	c.GenerateTeamIDMap()
+	return nil
+}
+
+func (c *SASTCache) GenerateTeamIDMap() {
 	c.TeamsByID = make(map[uint64]*Team)
 	for id, team := range c.Teams {
 		c.TeamsByID[team.TeamID] = &c.Teams[id]
 	}
-	return nil
 }
 
 func (c *SASTCache) RefreshUsers(client *SASTClient) error {
@@ -129,11 +137,15 @@ func (c *SASTCache) RefreshUsers(client *SASTClient) error {
 		return fmt.Errorf("failed to retrieve users: %s", err)
 	}
 
+	c.GenerateUserIDMap()
+	return nil
+}
+
+func (c *SASTCache) GenerateUserIDMap() {
 	c.UsersByID = make(map[uint64]*User)
 	for id, user := range c.Users {
 		c.UsersByID[user.UserID] = &c.Users[id]
 	}
-	return nil
 }
 
 func (c *SASTCache) RefreshQueries(client *SASTClient) error {
@@ -215,8 +227,8 @@ func (c *SASTCache) Refresh(client *SASTClient) []error {
 		errors = append(errors, err)
 	}
 
-	c.matchTeamProjects()
-	c.matchTeamUsers()
+	c.MatchTeamProjects()
+	c.MatchTeamUsers()
 
 	return errors
 }
