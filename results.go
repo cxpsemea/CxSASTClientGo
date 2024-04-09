@@ -35,6 +35,7 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 		Visibility               string   `xml:"Visibility,attr"`
 		Queries                  []struct {
 			XMLName  xml.Name `xml:"Query"`
+			Id       uint64   `xml:"id,attr"`
 			Name     string   `xml:"name,attr"`
 			Group    string   `xml:"group,attr"`
 			Language string   `xml:"Language,attr"`
@@ -85,6 +86,7 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 
 			results = append(results, ScanResult{
 				query.Name,
+				query.Id,
 				result.Path.PathID,
 				result.Line,
 				result.Column,
