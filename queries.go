@@ -137,30 +137,31 @@ func (qc *QueryCollection) LinkBaseQueries() {
 	baseQueries := make(map[string]uint64)
 
 	// first the product-default queries
-	for _, lang := range qc.QueryLanguages {
-		for _, group := range lang.QueryGroups {
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
 			if group.PackageType == "Cx" {
-				for _, query := range group.Queries {
+				for qid, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
 					baseQueries[name] = query.QueryID
-					query.BaseQueryID = query.QueryID
+
+					qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
 				}
 			}
 		}
 	}
 
 	// next corporate
-	for _, lang := range qc.QueryLanguages {
-		for _, group := range lang.QueryGroups {
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
 			if group.PackageType == "Corporate" {
-				for _, query := range group.Queries {
+				for qid, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
 
 					if val, ok := baseQueries[name]; ok {
-						query.BaseQueryID = val
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
 					} else {
 						baseQueries[name] = query.QueryID
-						query.BaseQueryID = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
 					}
 				}
 			}
@@ -168,17 +169,17 @@ func (qc *QueryCollection) LinkBaseQueries() {
 	}
 
 	// next team
-	for _, lang := range qc.QueryLanguages {
-		for _, group := range lang.QueryGroups {
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
 			if group.PackageType == "Team" {
-				for _, query := range group.Queries {
+				for qid, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
 
 					if val, ok := baseQueries[name]; ok {
-						query.BaseQueryID = val
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
 					} else {
 						baseQueries[name] = query.QueryID
-						query.BaseQueryID = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
 					}
 				}
 			}
@@ -186,17 +187,17 @@ func (qc *QueryCollection) LinkBaseQueries() {
 	}
 
 	// next project
-	for _, lang := range qc.QueryLanguages {
-		for _, group := range lang.QueryGroups {
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
 			if group.PackageType == "Project" {
-				for _, query := range group.Queries {
+				for qid, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
 
 					if val, ok := baseQueries[name]; ok {
-						query.BaseQueryID = val
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
 					} else {
 						baseQueries[name] = query.QueryID
-						query.BaseQueryID = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
 					}
 				}
 			}
