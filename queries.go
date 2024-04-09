@@ -9,6 +9,28 @@ import (
 )
 
 func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
+	qc := QueryCollection{
+		QueryLanguages: make([]QueryLanguage, 0),
+	}
+
+	c.logger.Debug("Get SAST Query Collection SOAP")
+	response, err := c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+	if err != nil {
+		return qc, err
+	}
+
+	err = qc.FromXML(response)
+	return qc, err
+}
+
+func (c SASTClient) GetQueriesSOAPRaw() ([]byte, error) {
+	c.logger.Debug("Get SAST Query Collection SOAP - Raw XML")
+	return c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+}
+
+func (qc *QueryCollection) FromXML(response []byte) error {
+	qc.QueryLanguages = make([]QueryLanguage, 0)
+
 	var xmlResponse struct {
 		XMLName xml.Name `xml:"Envelope"`
 		Body    struct {
@@ -31,8 +53,9 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 							Language        uint64
 							LanguageName    string
 							PackageTypeName string
-							ProjectID       int64
-							OwningTeam      int64
+							PackageType     string
+							ProjectId       uint64
+							OwningTeam      uint64
 						} `xml:"CxWSQueryGroup"`
 					}
 				}
@@ -40,30 +63,14 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 		}
 	}
 
-	qc := QueryCollection{
-		QueryLanguages: make([]QueryLanguage, 0),
-	}
-
-	c.logger.Debug("Get SAST Query Collection SOAP")
-	response, err := c.sendSOAPRequest("GetQueryCollection", "<i_SessionID></i_SessionID>")
+	err := xml.Unmarshal(response, &xmlResponse)
 	if err != nil {
-		return qc, err
-	}
-
-	err = xml.Unmarshal(response, &xmlResponse)
-	if err != nil {
-		c.logger.Errorf("Failed to parse SOAP response: %s", err)
-		c.logger.Tracef("Parsed from: %v", string(response))
-		return qc, err
+		return errors.New(fmt.Sprintf("Failed to parse SOAP response: %s", err))
 	}
 
 	if !xmlResponse.Body.Response.Result.IsSuccesfull {
-		c.logger.Errorf("SOAP request error: %v", xmlResponse.Body.Response.Result.ErrorMessage)
-		c.logger.Infof("Full response: %v", string(response))
-		return qc, errors.New(fmt.Sprintf("SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage))
+		return errors.New(fmt.Sprintf("SOAP request failed: %v", xmlResponse.Body.Response.Result.ErrorMessage))
 	}
-
-	languageIDs := map[string]uint64{}
 
 	for _, g := range xmlResponse.Body.Response.Result.QueryGroupsList.QueryGroups {
 		for _, q := range g.QueriesList.Queries {
@@ -75,19 +82,23 @@ func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 			}
 
 			q.Group = g.Name
-			qg := ql.GetQueryGroup(q.Group)
+			qg := ql.GetQueryGroupByID(q.PackageID)
+
 			if qg == nil {
-				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectID, g.PackageTypeName, g.OwningTeam})
+				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
+					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, g.OwningTeam,
+				})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 			}
 
 			qg.Queries = append(qg.Queries, q)
 
 		}
-
-		languageIDs[g.LanguageName] = g.Language
 	}
-	return qc, nil //errors.New( fmt.Sprintf( "Unable to find scan's preset %v: preset no longer exists?", result.Preset ) )
+
+	qc.LinkBaseQueries()
+
+	return nil
 }
 
 func (qc *QueryCollection) GetQueryLanguage(language string) *QueryLanguage {
@@ -105,18 +116,106 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 		ql = &qc.QueryLanguages[len(qc.QueryLanguages)-1]
 	}
 
-	qg := ql.GetQueryGroup(g.Name)
+	qg := ql.GetQueryGroupByID(g.PackageID)
 	if qg == nil {
-		ql.QueryGroups = append(ql.QueryGroups, QueryGroup{Name: g.Name, PackageID: g.PackageID, Queries: []Query{}, Language: g.Language, OwningProjectID: g.OwningProjectID, PackageType: g.PackageType, OwningTeamID: g.OwningTeamID})
+		ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
+			Name:            g.Name,
+			PackageID:       g.PackageID,
+			Queries:         []Query{},
+			Language:        g.Language,
+			OwningProjectID: g.OwningProjectID,
+			PackageType:     g.PackageType,
+			OwningTeamID:    g.OwningTeamID,
+		})
 		qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 	}
 
 	qg.Queries = append(qg.Queries, *q)
 }
 
+func (qc *QueryCollection) LinkBaseQueries() {
+	baseQueries := make(map[string]uint64)
+
+	// first the product-default queries
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
+			if group.PackageType == "Cx" {
+				for qid, query := range group.Queries {
+					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+					baseQueries[name] = query.QueryID
+
+					qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+				}
+			}
+		}
+	}
+
+	// next corporate
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
+			if group.PackageType == "Corporate" {
+				for qid, query := range group.Queries {
+					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+
+					if val, ok := baseQueries[name]; ok {
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
+					} else {
+						baseQueries[name] = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+					}
+				}
+			}
+		}
+	}
+
+	// next team
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
+			if group.PackageType == "Team" {
+				for qid, query := range group.Queries {
+					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+
+					if val, ok := baseQueries[name]; ok {
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
+					} else {
+						baseQueries[name] = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+					}
+				}
+			}
+		}
+	}
+
+	// next project
+	for lid, lang := range qc.QueryLanguages {
+		for gid, group := range lang.QueryGroups {
+			if group.PackageType == "Project" {
+				for qid, query := range group.Queries {
+					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+
+					if val, ok := baseQueries[name]; ok {
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
+					} else {
+						baseQueries[name] = query.QueryID
+						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+					}
+				}
+			}
+		}
+	}
+}
+
 func (ql *QueryLanguage) GetQueryGroup(group string) *QueryGroup {
 	for id := range ql.QueryGroups {
 		if ql.QueryGroups[id].Name == group {
+			return &ql.QueryGroups[id]
+		}
+	}
+	return nil
+}
+func (ql *QueryLanguage) GetQueryGroupByID(packageId uint64) *QueryGroup {
+	for id := range ql.QueryGroups {
+		if ql.QueryGroups[id].PackageID == packageId {
 			return &ql.QueryGroups[id]
 		}
 	}
@@ -171,6 +270,21 @@ func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 	return cqc
 }
 
+func (qc *QueryCollection) String() string {
+	languages := len(qc.QueryLanguages)
+	groups := 0
+	queries := 0
+
+	for _, ql := range qc.QueryLanguages {
+		groups += len(ql.QueryGroups)
+		for _, qg := range ql.QueryGroups {
+			queries += len(qg.Queries)
+		}
+	}
+
+	return fmt.Sprintf("Query collection with %d languages, %d groups, and %d queries", languages, groups, queries)
+}
+
 func (c SASTClient) GetQueryByID(qid uint64, queries *[]Query) *Query {
 	for id, q := range *queries {
 		if q.QueryID == qid {
@@ -191,7 +305,15 @@ func (q *Query) String() string {
 	return fmt.Sprintf("[%d] %v -> %v -> %v", q.QueryID, q.Language, q.Group, q.Name)
 }
 func (q *QueryGroup) String() string {
-	return fmt.Sprintf("[%d] %v -> %v", q.PackageID, q.Language, q.Name)
+	typeStr := "Cx Default"
+	if q.PackageType == "Team" {
+		typeStr = fmt.Sprintf("Team %d override", q.OwningTeamID)
+	} else if q.PackageType == "Project" {
+		typeStr = fmt.Sprintf("Project %d override", q.OwningProjectID)
+	} else if q.PackageType == "Corporate" {
+		typeStr = "Corp override"
+	}
+	return fmt.Sprintf("%v group [%d] %v -> %v", typeStr, q.PackageID, q.Language, q.Name)
 }
 func (q *QueryLanguage) String() string {
 	return q.Name

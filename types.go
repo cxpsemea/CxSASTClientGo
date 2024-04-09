@@ -159,6 +159,7 @@ type ProjectSettings struct {
 type Query struct {
 	Name         string
 	QueryID      uint64 `xml:"QueryId"`
+	BaseQueryID  uint64
 	CWE          uint64 `xml:"Cwe"`
 	Severity     int
 	PackageID    uint64 `xml:"PackageId"`
