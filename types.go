@@ -115,8 +115,8 @@ type Preset struct {
 	PresetID uint64 `json:"id"`
 	Name     string
 	QueryIDs []uint64
-	Filled   bool
-	Queries  []Query
+	Filled   bool    `json:"-"`
+	Queries  []Query `json:"-"`
 }
 
 type Project struct {
