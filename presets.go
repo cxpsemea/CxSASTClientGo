@@ -132,25 +132,27 @@ func (c SASTClient) GetPresetContents(p *Preset, queries *QueryCollection) error
 		return errors.Wrap(err, "Failed to parse preset contents")
 	}
 
+	p.QueryIDs = PresetContents.QueryIDs
+
 	c.logger.Tracef("Parsed preset %v with %d queries", PresetContents.Name, len(PresetContents.QueryIDs))
 
-	if queries == nil || len(queries.QueryLanguages) == 0 {
-		c.logger.Warnf("GetPresetContents called with an empty query collection, will not populate the Preset.Queries array")
-	} else {
-		p.Queries = make([]Query, len(PresetContents.QueryIDs))
-		for id, qid := range PresetContents.QueryIDs {
-			q := queries.GetQueryByID(qid)
-			if q != nil {
-				p.Queries[id] = *q
-				c.logger.Tracef(" - linked query: %v", q.String())
-			}
+	if queries != nil {
+		p.LinkQueries(queries)
+	}
+
+	return nil
+}
+
+func (p *Preset) LinkQueries(queries *QueryCollection) {
+	p.Queries = make([]Query, len(p.QueryIDs))
+	for id, qid := range p.QueryIDs {
+		q := queries.GetQueryByID(qid)
+		if q != nil {
+			p.Queries[id] = *q
 		}
 	}
 
-	p.QueryIDs = PresetContents.QueryIDs
-
 	p.Filled = true
-	return nil
 }
 
 func (c SASTClient) PresetLink(p *Preset) string {

@@ -115,8 +115,8 @@ type Preset struct {
 	PresetID uint64 `json:"id"`
 	Name     string
 	QueryIDs []uint64
-	Filled   bool
-	Queries  []Query
+	Filled   bool    `json:"-"`
+	Queries  []Query `json:"-"`
 }
 
 type Project struct {
@@ -173,9 +173,9 @@ type QueryGroup struct {
 	PackageID       uint64
 	Queries         []Query
 	Language        string `xml:"languageName"`
-	OwningProjectID int64  `xml:"ProjectId"`
+	OwningProjectID uint64 `xml:"ProjectId"`
 	PackageType     string `xml:"PackageTypeName"`
-	OwningTeamID    int64  `xml:"OwningTeam"`
+	OwningTeamID    uint64 `xml:"OwningTeam"`
 }
 
 type QueryLanguage struct {
