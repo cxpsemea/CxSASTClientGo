@@ -55,6 +55,14 @@ func (c *SASTCache) MatchTeamUsers() {
 	}
 }
 
+func (c *SASTCache) MatchPresetQueries() {
+	if len(c.Queries.QueryLanguages) > 0 {
+		for id := range c.Presets {
+			c.Presets[id].LinkQueries(&c.Queries)
+		}
+	}
+}
+
 func (c *SASTCache) PresetSummary() string {
 
 	return strconv.Itoa(len(c.Presets)) + " presets"
@@ -169,12 +177,10 @@ func (c *SASTCache) RefreshPresets(client *SASTClient) error {
 		client.logger.Errorf("Failed while retrieving presets: %s", err)
 		return fmt.Errorf("failed to retrieve presets: %s", err)
 	} else {
-		if len(c.Queries.QueryLanguages) > 0 {
-			for id := range c.Presets {
-				err := client.GetPresetContents(&c.Presets[id], &c.Queries)
-				if err != nil {
-					client.logger.Errorf("Failed to retrieve preset contents for preset %v: %s", c.Presets[id].String(), err)
-				}
+		for id := range c.Presets {
+			err := client.GetPresetContents(&c.Presets[id], nil)
+			if err != nil {
+				client.logger.Errorf("Failed to retrieve preset contents for preset %v: %s", c.Presets[id].String(), err)
 			}
 		}
 	}
@@ -229,6 +235,7 @@ func (c *SASTCache) Refresh(client *SASTClient) []error {
 
 	c.MatchTeamProjects()
 	c.MatchTeamUsers()
+	c.MatchPresetQueries()
 
 	return errors
 }
