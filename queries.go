@@ -279,6 +279,8 @@ func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 		}
 	}
 
+	cqc.GetQueryCount()
+
 	return cqc
 }
 
