@@ -186,6 +186,7 @@ type QueryLanguage struct {
 
 type QueryCollection struct {
 	QueryLanguages []QueryLanguage
+	QueryCount     uint
 }
 
 type Report struct {
