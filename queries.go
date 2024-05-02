@@ -96,9 +96,21 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 		}
 	}
 
+	qc.GetQueryCount()
 	qc.LinkBaseQueries()
 
 	return nil
+}
+
+func (qc *QueryCollection) GetQueryCount() uint {
+	var total uint = 0
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			total += uint(len(qc.QueryLanguages[lid].QueryGroups[gid].Queries))
+		}
+	}
+	qc.QueryCount = total
+	return total
 }
 
 func (qc *QueryCollection) GetQueryLanguage(language string) *QueryLanguage {
@@ -266,6 +278,8 @@ func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 			}
 		}
 	}
+
+	cqc.GetQueryCount()
 
 	return cqc
 }
