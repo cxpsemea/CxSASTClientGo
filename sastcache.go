@@ -26,6 +26,7 @@ func (c *SASTCache) String() string {
 
 func (c *SASTCache) MatchTeamProjects() {
 	for tid := range c.Teams {
+		c.Teams[tid].Projects = make([]*Project, 0)
 		for id, project := range c.Projects {
 			if c.Teams[tid].TeamID == project.TeamID {
 				c.Teams[tid].Projects = append(c.Teams[tid].Projects, &c.Projects[id])
@@ -37,6 +38,7 @@ func (c *SASTCache) MatchTeamProjects() {
 func (c *SASTCache) MatchTeamUsers() {
 	// first check for direct assignment
 	for tid := range c.Teams {
+		c.Teams[tid].Users = make([]uint64, 0)
 		for _, user := range c.Users {
 			if user.IsInTeam(c.Teams[tid].TeamID) {
 				c.Teams[tid].Users = append(c.Teams[tid].Users, user.UserID)
@@ -45,6 +47,7 @@ func (c *SASTCache) MatchTeamUsers() {
 	}
 	// second check if there is inherited access
 	for tid, team := range c.Teams {
+		c.Teams[tid].InheritedUsers = make([]uint64, 0)
 		for _, user := range c.Users {
 			for stid := team.ParentID; stid > 0; stid = c.TeamsByID[stid].ParentID {
 				if user.IsInTeam(stid) && !slices.Contains(c.Teams[tid].InheritedUsers, user.UserID) && !slices.Contains(c.Teams[tid].Users, user.UserID) {
