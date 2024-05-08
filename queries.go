@@ -8,6 +8,13 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	CORP_QUERY    = "Corporate"
+	PRODUCT_QUERY = "Cx"
+	TEAM_QUERY    = "Team"
+	PROJECT_QUERY = "Project"
+)
+
 func (c SASTClient) GetQueriesSOAP() (QueryCollection, error) {
 	qc := QueryCollection{
 		QueryLanguages: make([]QueryLanguage, 0),
@@ -93,11 +100,13 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 
 			qg.Queries = append(qg.Queries, q)
 
+			for id := range qg.Queries {
+				qg.Queries[id].OwningGroup = qg
+			}
 		}
 	}
 
 	qc.GetQueryCount()
-	qc.LinkBaseQueries()
 
 	return nil
 }
@@ -145,35 +154,44 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 	qg.Queries = append(qg.Queries, *q)
 }
 
-func (qc *QueryCollection) LinkBaseQueries() {
-	baseQueries := make(map[string]uint64)
+func (qc *QueryCollection) LinkBaseQueries(teamsByID map[uint64]*Team, projectsByID map[uint64]*Project) {
+	productQueries := make(map[string]uint64)
+	corpQueries := make(map[string]uint64)
+	teamQueries := make(map[uint64]map[string]uint64)
+	queriesById := make(map[uint64]*Query)
 
-	// first the product-default queries
+	// make a map of queries by id
 	for lid, lang := range qc.QueryLanguages {
 		for gid, group := range lang.QueryGroups {
-			if group.PackageType == "Cx" {
-				for qid, query := range group.Queries {
-					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
-					baseQueries[name] = query.QueryID
+			for qid, query := range group.Queries {
+				queriesById[query.QueryID] = &(qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+			}
+		}
+	}
 
-					qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+	// first the product-default queries
+	for _, lang := range qc.QueryLanguages {
+		for _, group := range lang.QueryGroups {
+			if group.PackageType == PRODUCT_QUERY {
+				for _, query := range group.Queries {
+					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+					productQueries[name] = query.QueryID
+					queriesById[query.QueryID].BaseQueryID = query.QueryID
 				}
 			}
 		}
 	}
 
 	// next corporate
-	for lid, lang := range qc.QueryLanguages {
-		for gid, group := range lang.QueryGroups {
-			if group.PackageType == "Corporate" {
-				for qid, query := range group.Queries {
+	for _, lang := range qc.QueryLanguages {
+		for _, group := range lang.QueryGroups {
+			if group.PackageType == CORP_QUERY {
+				for _, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+					corpQueries[name] = query.QueryID
 
-					if val, ok := baseQueries[name]; ok {
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
-					} else {
-						baseQueries[name] = query.QueryID
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+					if val, ok := productQueries[name]; ok {
+						queriesById[query.QueryID].BaseQueryID = val
 					}
 				}
 			}
@@ -181,35 +199,105 @@ func (qc *QueryCollection) LinkBaseQueries() {
 	}
 
 	// next team
-	for lid, lang := range qc.QueryLanguages {
-		for gid, group := range lang.QueryGroups {
-			if group.PackageType == "Team" {
-				for qid, query := range group.Queries {
+	for _, lang := range qc.QueryLanguages {
+		for _, group := range lang.QueryGroups {
+			if group.PackageType == TEAM_QUERY {
+				for _, query := range group.Queries {
 					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
 
-					if val, ok := baseQueries[name]; ok {
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
-					} else {
-						baseQueries[name] = query.QueryID
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+					if _, ok := teamQueries[group.OwningTeamID]; !ok {
+						teamQueries[group.OwningTeamID] = make(map[string]uint64)
 					}
+					teamQueries[group.OwningTeamID][name] = query.QueryID
+					/*
+						if val, ok := baseQueries[name]; ok {
+							qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
+						} else {
+							baseQueries[name] = query.QueryID
+							qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+						}
+					*/
 				}
 			}
 		}
 	}
 
+	// for each team with custom queries
+	// - for each custom query
+	// - - for each step up the hierarchy
+	// - - - check if the same query has an override
+
+	// link team overrides to parent-team overrides if present
+	for tid, teamMap := range teamQueries {
+		if team, ok := teamsByID[tid]; ok {
+			pathToCorp := make([]map[string]uint64, 0)
+
+			for pid := team.ParentID; pid > 1; pid = team.ParentID {
+				if team, ok = teamsByID[pid]; ok {
+					if _, ok := teamQueries[team.TeamID]; ok {
+						pathToCorp = append(pathToCorp, teamQueries[team.TeamID])
+					} else {
+						break
+					}
+				} else {
+					break
+				}
+			}
+
+			pathToCorp = append(pathToCorp, corpQueries)
+			pathToCorp = append(pathToCorp, productQueries)
+
+			for query, qid := range teamMap {
+				for pathid := range pathToCorp {
+					if override, ok := pathToCorp[pathid][query]; ok {
+						queriesById[qid].BaseQueryID = override
+						break
+					}
+				}
+			}
+		}
+		/*else {
+			// ignore it - leftover custom queries outside of the team hierarchy? orphans?
+		}*/
+	}
+
 	// next project
 	for lid, lang := range qc.QueryLanguages {
 		for gid, group := range lang.QueryGroups {
-			if group.PackageType == "Project" {
-				for qid, query := range group.Queries {
-					name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+			if group.PackageType == PROJECT_QUERY {
+				if proj, ok := projectsByID[group.OwningProjectID]; ok {
+					if team, ok := teamsByID[proj.TeamID]; ok {
+						pathToCorp := make([]map[string]uint64, 0)
 
-					if val, ok := baseQueries[name]; ok {
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = val
-					} else {
-						baseQueries[name] = query.QueryID
-						qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = query.QueryID
+						if _, ok := teamQueries[team.TeamID]; ok {
+							pathToCorp = append(pathToCorp, teamQueries[team.TeamID])
+
+							for pid := team.ParentID; pid > 1; pid = team.ParentID {
+								if team, ok = teamsByID[pid]; ok {
+									if _, ok := teamQueries[team.TeamID]; ok {
+										pathToCorp = append(pathToCorp, teamQueries[team.TeamID])
+									} else {
+										break
+									}
+								} else {
+									break
+								}
+							}
+							pathToCorp = append(pathToCorp, corpQueries)
+							pathToCorp = append(pathToCorp, productQueries)
+						}
+
+						for qid, query := range group.Queries {
+							name := strings.ToUpper(fmt.Sprintf("%v.%v.%v", lang.Name, group.Name, query.Name))
+
+							for pathid := range pathToCorp {
+								if override, ok := pathToCorp[pathid][name]; ok {
+									qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].BaseQueryID = override
+									break
+								}
+							}
+
+						}
 					}
 				}
 			}
@@ -320,11 +408,11 @@ func (q *Query) String() string {
 }
 func (q *QueryGroup) String() string {
 	typeStr := "Cx Default"
-	if q.PackageType == "Team" {
+	if q.PackageType == TEAM_QUERY {
 		typeStr = fmt.Sprintf("Team %d override", q.OwningTeamID)
-	} else if q.PackageType == "Project" {
+	} else if q.PackageType == PROJECT_QUERY {
 		typeStr = fmt.Sprintf("Project %d override", q.OwningProjectID)
-	} else if q.PackageType == "Corporate" {
+	} else if q.PackageType == CORP_QUERY {
 		typeStr = "Corp override"
 	}
 	return fmt.Sprintf("%v group [%d] %v -> %v", typeStr, q.PackageID, q.Language, q.Name)

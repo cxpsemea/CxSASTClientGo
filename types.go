@@ -166,6 +166,7 @@ type Query struct {
 	Language     string
 	Group        string
 	IsExecutable bool `xml:"IsExecutable"`
+	OwningGroup  *QueryGroup
 }
 
 type QueryGroup struct {
