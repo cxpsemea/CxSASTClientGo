@@ -88,6 +88,28 @@ func (c SASTClient) GetProjects() ([]Project, error) {
 
 }
 
+func (c SASTClient) GetProjectsByName(name string) ([]Project, error) {
+	c.logger.Debugf("Get SAST Projects matching %v", name)
+	var projects []Project
+	response, err := c.getV(fmt.Sprintf("/projects?projectName=%v", name), "2.1")
+	if err != nil {
+		return projects, err
+	}
+
+	var pps []ProjectComplex
+	err = json.Unmarshal(response, &pps)
+	c.logger.Tracef("Retrieved %d projects", len(pps))
+	if err != nil {
+		c.logger.Errorf("Failed to parse project response: %s", err)
+		return projects, err
+	}
+
+	projects = ConvertProjects(&pps)
+
+	return projects, err
+
+}
+
 func (c SASTClient) GetProjectsInTeam(teamid uint64) ([]Project, error) {
 	c.depwarn("GetProjectsInTeam", "GetProjectsInTeamByID")
 	return c.GetProjectsInTeamByID(teamid)

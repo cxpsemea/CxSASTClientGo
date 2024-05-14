@@ -129,7 +129,7 @@ func (c SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, response
 // convenience function
 func (c SASTClient) getV(api string, version string) ([]byte, error) {
 	header := http.Header{}
-	header.Add("Accept", "application/json;version="+version)
+	header.Add("Accept", "application/json;v="+version)
 
 	return c.sendRequest(http.MethodGet, api, nil, header)
 }
