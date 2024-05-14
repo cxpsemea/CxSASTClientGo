@@ -239,6 +239,7 @@ func (c *SASTCache) Refresh(client *SASTClient) []error {
 	c.MatchTeamProjects()
 	c.MatchTeamUsers()
 	c.MatchPresetQueries()
+	c.Queries.LinkBaseQueries(c.TeamsByID, c.ProjectsByID)
 
 	return errors
 }
