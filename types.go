@@ -223,6 +223,10 @@ type Role struct {
 	PermissionIDs []uint64
 }
 
+type SASTTime struct {
+	time.Time
+}
+
 type Scan struct {
 	ScanID  uint64 `json:"id"`
 	Project struct {
@@ -237,7 +241,12 @@ type Scan struct {
 		SourceID  string `json:"sourceId"`
 		CxVersion string `json:"cxVersion"`
 	}
-	FinishTime time.Time
+	DateAndTime struct {
+		StartedOn        SASTTime
+		FinishedOn       SASTTime
+		EngineStartedOn  SASTTime
+		EngineFinishedOn SASTTime
+	}
 }
 
 type ScanResult struct {

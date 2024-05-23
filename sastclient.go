@@ -166,7 +166,7 @@ func (c SASTClient) ClientsValid() (bool, bool) {
 }
 
 func (s *Scan) String() string {
-	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.FinishTime.Format(time.RFC3339))
+	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.DateAndTime.FinishedOn.Format(time.RFC3339))
 }
 
 func (c SASTClient) String() string {
@@ -253,4 +253,16 @@ func versionStringToInts(version string) []int64 {
 		ints[id], _ = strconv.ParseInt(val, 10, 64)
 	}
 	return ints
+}
+
+const sastTimeLayout = "2006-01-02T15:04:05.999"
+
+func (ct *SASTTime) UnmarshalJSON(b []byte) (err error) {
+	s := strings.Trim(string(b), "\"")
+	if s == "null" {
+		ct.Time = time.Time{}
+		return
+	}
+	ct.Time, err = time.Parse(sastTimeLayout, s)
+	return
 }
