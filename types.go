@@ -234,7 +234,8 @@ type Scan struct {
 		Name string
 	}
 	ScanState struct {
-		SourceID string `json:"sourceId"`
+		SourceID  string `json:"sourceId"`
+		CxVersion string `json:"cxVersion"`
 	}
 	FinishTime time.Time
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 
 	//"io/ioutil"
 	"net/http"
@@ -220,4 +221,36 @@ func (c SASTClient) depwarn(old, new string) {
 	} else {
 		c.logger.Warnf("Cx1SASTClientGo deprecation notice: %v will be deprecated and replaced by %v", old, new)
 	}
+}
+
+func (c SASTClient) CompareVersions(version, target string) int {
+	v := versionStringToInts(version)
+	t := versionStringToInts(target)
+
+	min := len(v)
+	if min > len(t) {
+		min = len(t)
+	}
+
+	for id := 0; id < min; id++ {
+		if v[id] < t[id] {
+			return -1
+		}
+		if v[id] > t[id] {
+			return 1
+		}
+	}
+	return 0
+}
+
+func versionStringToInts(version string) []int64 {
+	if version == "" {
+		return []int64{0, 0, 0, 0}
+	}
+	str := strings.Split(version, ".")
+	ints := make([]int64, len(str))
+	for id, val := range str {
+		ints[id], _ = strconv.ParseInt(val, 10, 64)
+	}
+	return ints
 }
