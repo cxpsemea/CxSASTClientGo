@@ -91,7 +91,7 @@ func (c SASTClient) GetProjects() ([]Project, error) {
 func (c SASTClient) GetProjectsByName(name string) ([]Project, error) {
 	c.logger.Debugf("Get SAST Projects matching %v", name)
 	var projects []Project
-	response, err := c.getV(fmt.Sprintf("/projects?projectName=%v", name), "2.1")
+	response, err := c.getV(fmt.Sprintf("/projects?projectName=%v", name), "2.2")
 	if err != nil {
 		return projects, err
 	}
@@ -241,6 +241,25 @@ func (c SASTClient) GetProjectSourceFilters(project *Project) error {
 
 	project.Filters = &filters
 	return nil
+}
+
+func (c SASTClient) UpdateProjectCustomFields(project *Project) error {
+	var body struct {
+		Name         string               `json:"name"`
+		OwningTeam   uint64               `json:"owningTeam"`
+		CustomFields []ProjectCustomField `json:"customFields"`
+	}
+	body.Name = project.Name
+	body.OwningTeam = project.TeamID
+	body.CustomFields = project.CustomFields
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.sendRequest(http.MethodPut, fmt.Sprintf("/projects/%d", project.ProjectID), bytes.NewReader(jsonData), nil)
+	return err
 }
 
 func (c SASTClient) ScanProjectByID(projectID uint64, isIncremental, isPublic, forceScan bool, comment string) (uint64, error) {
@@ -438,18 +457,20 @@ func (f SourceFilters) foldersToGlob() string {
 	}
 }
 
-/*
-func (c SASTClient) GetProjectConfigurationSOAP(projectId uint64) error {
-	c.logger.Debug("Get SAST Scan Preset SOAP")
-	response, err := c.sendSOAPRequest("GetProjectConfiguration", fmt.Sprintf("<sessionID></sessionID><projectID>%d</projectID>", projectId))
-	if err != nil {
-		return err
+func (p *Project) SetCustomField(id uint, name, value string) {
+	for i := range p.CustomFields {
+		if p.CustomFields[i].ID == id {
+			p.CustomFields[i].Value = value
+			return
+		}
 	}
 
-	c.logger.Infof("Returned: %s", string(response))
-
-	return nil
-} */
+	p.CustomFields = append(p.CustomFields, ProjectCustomField{
+		ID:    id,
+		Value: value,
+		Name:  name,
+	})
+}
 
 // this type is used temporarily to convert into the 'simpler' format defined in types.go
 type ProjectComplex struct {
