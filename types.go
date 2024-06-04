@@ -132,9 +132,10 @@ type Project struct {
 }
 
 type ProjectCustomField struct {
-	ID    uint   `json:"id"`
-	Value string `json:"value"`
-	Name  string `json:"name"`
+	ID        uint   `json:"id"`
+	Value     string `json:"value"`
+	Name      string `json:"name"`
+	Mandatory bool   `json:"isMandatory"`
 }
 
 type ProjectRepo struct {

@@ -1,8 +1,10 @@
 package CxSASTClientGo
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 )
@@ -50,4 +52,15 @@ func (c SASTClient) GetVersionSOAP() (ApplicationVersion, error) {
 	}
 
 	return version, nil
+}
+
+func (c SASTClient) GetCustomFields() ([]ProjectCustomField, error) {
+	var fields []ProjectCustomField
+	response, err := c.sendRequest(http.MethodGet, "/customFields", nil, nil)
+	if err != nil {
+		return fields, err
+	}
+
+	err = json.Unmarshal(response, &fields)
+	return fields, err
 }
