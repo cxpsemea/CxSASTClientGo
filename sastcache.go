@@ -92,8 +92,8 @@ func (c *SASTCache) ProjectSummary() string {
 
 func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	var err error
-	c.Projects, err = client.GetProjects()
 	client.logger.Info("Refreshing projects in cache")
+	c.Projects, err = client.GetProjects()
 
 	if err != nil {
 		client.logger.Errorf("Failed while retrieving projects: %s", err)
@@ -111,6 +111,7 @@ func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 
 	c.GenerateProjectIDMap()
 
+	client.logger.Info("Finished loading projects")
 	return nil
 }
 
