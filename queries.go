@@ -99,16 +99,23 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 			}
 
 			qg.Queries = append(qg.Queries, q)
-
-			for id := range qg.Queries {
-				qg.Queries[id].OwningGroup = qg
-			}
 		}
 	}
 
+	qc.LinkGroups()
 	qc.GetQueryCount()
 
 	return nil
+}
+
+func (qc *QueryCollection) LinkGroups() {
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+				qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid].OwningGroup = &qc.QueryLanguages[lid].QueryGroups[gid]
+			}
+		}
+	}
 }
 
 func (qc *QueryCollection) GetQueryCount() uint {
