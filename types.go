@@ -166,8 +166,8 @@ type Query struct {
 	PackageID    uint64 `xml:"PackageId"`
 	Language     string
 	Group        string
-	IsExecutable bool `xml:"IsExecutable"`
-	OwningGroup  *QueryGroup
+	IsExecutable bool        `xml:"IsExecutable"`
+	OwningGroup  *QueryGroup `json:"-"`
 }
 
 type QueryGroup struct {

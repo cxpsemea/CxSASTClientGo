@@ -92,8 +92,8 @@ func (c *SASTCache) ProjectSummary() string {
 
 func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	var err error
+	client.logger.Info("Refreshing projects in SAST cache")
 	c.Projects, err = client.GetProjects()
-	client.logger.Info("Refreshing projects in cache")
 
 	if err != nil {
 		client.logger.Errorf("Failed while retrieving projects: %s", err)
@@ -110,7 +110,6 @@ func (c *SASTCache) RefreshProjects(client *SASTClient) error {
 	}
 
 	c.GenerateProjectIDMap()
-
 	return nil
 }
 
@@ -122,7 +121,7 @@ func (c *SASTCache) GenerateProjectIDMap() {
 }
 
 func (c *SASTCache) RefreshTeams(client *SASTClient) error {
-	client.logger.Info("Refreshing teams in cache")
+	client.logger.Info("Refreshing teams in SAST cache")
 	var err error
 	c.Teams, err = client.GetTeams()
 	if err != nil {
@@ -141,7 +140,7 @@ func (c *SASTCache) GenerateTeamIDMap() {
 }
 
 func (c *SASTCache) RefreshUsers(client *SASTClient) error {
-	client.logger.Info("Refreshing users in cache")
+	client.logger.Info("Refreshing users in SAST cache")
 	var err error
 	c.Users, err = client.GetUsers()
 	if err != nil {
@@ -160,7 +159,7 @@ func (c *SASTCache) GenerateUserIDMap() {
 }
 
 func (c *SASTCache) RefreshQueries(client *SASTClient) error {
-	client.logger.Info("Refreshing queries in cache")
+	client.logger.Info("Refreshing queries in SAST cache")
 	_, soap := client.ClientsValid()
 	var err error
 	if soap {
@@ -173,7 +172,7 @@ func (c *SASTCache) RefreshQueries(client *SASTClient) error {
 }
 
 func (c *SASTCache) RefreshPresets(client *SASTClient) error {
-	client.logger.Info("Refreshing presets in cache")
+	client.logger.Info("Refreshing presets in SAST cache")
 	var err error
 	c.Presets, err = client.GetPresets()
 	if err != nil {
@@ -191,7 +190,7 @@ func (c *SASTCache) RefreshPresets(client *SASTClient) error {
 }
 
 func (c *SASTCache) RefreshRoles(client *SASTClient) error {
-	client.logger.Info("Refreshing roles in cache")
+	client.logger.Info("Refreshing roles in SAST cache")
 	var err error
 	c.Roles, err = client.GetRoles()
 	if err != nil {
