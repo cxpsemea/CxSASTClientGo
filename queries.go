@@ -64,7 +64,7 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 							PackageTypeName string
 							PackageType     string
 							ProjectId       uint64
-							OwningTeam      uint64
+							OwningTeam      int64
 						} `xml:"CxWSQueryGroup"`
 					}
 				}
@@ -95,7 +95,7 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 
 			if qg == nil {
 				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
-					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, g.OwningTeam,
+					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, uint64(g.OwningTeam),
 				})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 			}
