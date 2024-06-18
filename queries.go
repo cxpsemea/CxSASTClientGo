@@ -3,6 +3,8 @@ package CxSASTClientGo
 import (
 	"encoding/xml"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -161,7 +163,7 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 	qg.Queries = append(qg.Queries, *q)
 }
 
-func (qc *QueryCollection) LinkBaseQueries(teamsByID map[uint64]*Team, projectsByID map[uint64]*Project) {
+func (qc *QueryCollection) LinkBaseQueries(teamsByID *map[uint64]*Team, projectsByID *map[uint64]*Project) {
 	productQueries := make(map[string]uint64)
 	teamQueries := make(map[uint64]map[string]uint64)
 	teamQueries[0] = make(map[string]uint64)
@@ -179,18 +181,38 @@ func (qc *QueryCollection) LinkBaseQueries(teamsByID map[uint64]*Team, projectsB
 				case PRODUCT_QUERY:
 					productQueries[nicename] = query.QueryID
 					queriesById[query.QueryID].BaseQueryID = query.QueryID
+					/*
+						if query.Name == "Command_Injection" {
+							fmt.Printf("Added product query %v\n", queriesById[query.QueryID].StringDetailed())
+						}
+					*/
 				case CORP_QUERY:
 					teamQueries[0][nicename] = query.QueryID
+					/*
+						if query.Name == "Command_Injection" {
+							fmt.Printf("Added corp query %v\n", queriesById[query.QueryID].StringDetailed())
+						}
+					*/
 				case TEAM_QUERY:
 					if _, ok := teamQueries[group.OwningTeamID]; !ok {
 						teamQueries[group.OwningTeamID] = make(map[string]uint64)
 					}
 					teamQueries[group.OwningTeamID][nicename] = query.QueryID
+					/*
+						if query.Name == "Command_Injection" {
+							fmt.Printf("Added team query %v\n", queriesById[query.QueryID].StringDetailed())
+						}
+					*/
 				case PROJECT_QUERY:
 					if _, ok := projectQueries[group.OwningProjectID]; !ok {
 						projectQueries[group.OwningProjectID] = make(map[string]uint64)
 					}
 					projectQueries[group.OwningProjectID][nicename] = query.QueryID
+					/*
+						if query.Name == "Command_Injection" {
+							fmt.Printf("Added project query %v\n", queriesById[query.QueryID].StringDetailed())
+						}
+					*/
 				}
 			}
 		}
@@ -213,8 +235,8 @@ func (qc *QueryCollection) LinkBaseQueries(teamsByID map[uint64]*Team, projectsB
 				for _, query := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 					nicename := fmt.Sprintf("%v.%v.%v", query.Language, query.Group, query.Name)
 					baseID := uint64(0)
-					if team, ok := teamsByID[qc.QueryLanguages[lid].QueryGroups[gid].OwningTeamID]; ok && team != nil { // team exists
-						baseID = findBaseQueryID(nicename, team.ParentID, &teamQueries, &teamsByID)
+					if team, ok := (*teamsByID)[qc.QueryLanguages[lid].QueryGroups[gid].OwningTeamID]; ok && team != nil { // team exists
+						baseID = findBaseQueryID(nicename, team.ParentID, &teamQueries, teamsByID)
 					}
 
 					if baseID == 0 {
@@ -231,8 +253,11 @@ func (qc *QueryCollection) LinkBaseQueries(teamsByID map[uint64]*Team, projectsB
 				for _, query := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 					nicename := fmt.Sprintf("%v.%v.%v", query.Language, query.Group, query.Name)
 					baseID := uint64(0)
-					if proj, ok := projectsByID[qc.QueryLanguages[lid].QueryGroups[gid].OwningProjectID]; ok && proj != nil { // team exists
-						baseID = findBaseQueryID(nicename, proj.TeamID, &teamQueries, &teamsByID)
+					if proj, ok := (*projectsByID)[qc.QueryLanguages[lid].QueryGroups[gid].OwningProjectID]; ok && proj != nil { // team exists
+						baseID = findBaseQueryID(nicename, proj.TeamID, &teamQueries, teamsByID)
+					} else {
+						//fmt.Printf("Search for query %v (%v) base invalid, no owning project\n", nicename, query.StringDetailed())
+						continue
 					}
 
 					if baseID == 0 {
@@ -312,6 +337,163 @@ func (qc *QueryCollection) GetQueryByID(qid uint64) *Query {
 	}
 	return nil
 }
+
+func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, projectsByID *map[uint64]*Project) {
+	/*projectOpenCalls := make(map[uint64][]string)
+	projectBaseCalls := make(map[uint64][]string)
+
+	teamOpenCalls := make(map[uint64][]string)
+	teamBaseCalls := make(map[uint64][]string)*/
+
+	open_call := regexp.MustCompile(`[^a-zA-Z0-9_.]([a-zA-Z_0-9]+)\(\)`)
+	base_call := regexp.MustCompile(`base\.([a-zA-Z_0-9]+)\(\)`)
+
+	for lid, ql := range qc.QueryLanguages {
+		for gid, qg := range ql.QueryGroups {
+			for qid := range qg.Queries {
+				qq := &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid]
+				if qq.IsCustom() {
+
+					open_calls := open_call.FindAllStringSubmatch(qq.Source, -1)
+					base_calls := base_call.FindAllStringSubmatch(qq.Source, -1)
+
+					if len(open_calls) > 0 {
+						//fmt.Printf("%v Open calls:\n", qq.StringDetailed())
+						for _, matches := range open_calls {
+							var q *Query = nil
+							var err error
+
+							if qg.OwningTeamID > 0 {
+								q, err = qc.FindTeamBaseQueryInTree(qq.Language, matches[1], qg.OwningTeamID, teamsByID)
+							} else if qg.OwningProjectID > 0 {
+								q, err = qc.FindProjectBaseQueryInTree(qq.Language, matches[1], qg.OwningProjectID, teamsByID, projectsByID)
+							} else {
+								q = qc.FindCorpBaseQuery(qq.Language, matches[1])
+							}
+
+							if q != nil {
+								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
+								if !slices.Contains(qq.Dependencies, q.QueryID) {
+									qq.Dependencies = append(qq.Dependencies, q.QueryID)
+								}
+							} else {
+								//fmt.Printf(" - %v -> unknown open call %v: %s\n", qq.StringDetailed(), matches[1], err)
+								if err == nil && !slices.Contains(qq.UnknownCalls, matches[1]) {
+									qq.UnknownCalls = append(qq.UnknownCalls, matches[1])
+								}
+							}
+
+						}
+					}
+					if len(base_calls) > 0 {
+						//fmt.Printf("%v Base calls:\n", qq.StringDetailed())
+						for _, matches := range base_calls {
+							var q *Query = nil
+							var err error
+
+							if qg.OwningTeamID > 0 {
+								if team, ok := (*teamsByID)[qg.OwningTeamID]; ok {
+									q, err = qc.FindTeamBaseQueryInTree(qq.Language, matches[1], team.ParentID, teamsByID)
+								} else {
+									err = fmt.Errorf("no team found with ID %d", qg.OwningTeamID)
+								}
+							} else if qg.OwningProjectID > 0 {
+								if proj, ok := (*projectsByID)[qg.OwningProjectID]; ok {
+									q, err = qc.FindTeamBaseQueryInTree(qq.Language, matches[1], proj.TeamID, teamsByID)
+								} else {
+									err = fmt.Errorf("no project found with ID %d", qg.OwningProjectID)
+								}
+							} else {
+								q = qc.FindProductQuery(qq.Language, matches[1])
+							}
+
+							if q != nil {
+								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
+								if !slices.Contains(qq.Dependencies, q.QueryID) {
+									qq.Dependencies = append(qq.Dependencies, q.QueryID)
+								}
+							} else {
+								//fmt.Printf(" - %v -> unknown base call %v: %s\n", qq.StringDetailed(), matches[1], err)
+								if err == nil && !slices.Contains(qq.UnknownCalls, matches[1]) {
+
+									qq.UnknownCalls = append(qq.UnknownCalls, matches[1])
+								}
+							}
+						}
+					}
+
+				}
+			}
+		}
+	}
+}
+
+func (qc *QueryCollection) FindProjectBaseQueryInTree(language, query string, projectId uint64, teamsByID *map[uint64]*Team, projectsByID *map[uint64]*Project) (*Query, error) {
+	if ql := qc.GetQueryLanguage(language); ql != nil {
+		for _, qg := range ql.QueryGroups {
+			if qg.PackageType == PROJECT_QUERY && qg.OwningProjectID == projectId {
+				if q := qg.GetQuery(query); q != nil {
+					return q, nil
+				}
+			}
+		}
+	}
+
+	if proj, ok := (*projectsByID)[projectId]; ok {
+		return qc.FindTeamBaseQueryInTree(language, query, proj.TeamID, teamsByID)
+	} else {
+		return nil, fmt.Errorf("unknown project with id %d", projectId) // unknown project
+	}
+}
+
+func (qc *QueryCollection) FindTeamBaseQueryInTree(language, query string, teamId uint64, teamsByID *map[uint64]*Team) (*Query, error) {
+	if ql := qc.GetQueryLanguage(language); ql != nil {
+		for _, qg := range ql.QueryGroups {
+			if qg.PackageType == TEAM_QUERY && qg.OwningTeamID == teamId {
+				if q := qg.GetQuery(query); q != nil {
+					return q, nil
+				}
+			}
+		}
+	}
+
+	if team, ok := (*teamsByID)[teamId]; ok {
+		if team.ParentID == 0 {
+			return qc.FindCorpBaseQuery(language, query), nil
+		} else {
+			return qc.FindTeamBaseQueryInTree(language, query, team.ParentID, teamsByID)
+		}
+	} else {
+		return nil, fmt.Errorf("unknown team with id %d", teamId)
+	}
+}
+
+func (qc *QueryCollection) FindCorpBaseQuery(language, query string) *Query {
+	if ql := qc.GetQueryLanguage(language); ql != nil {
+		for _, qg := range ql.QueryGroups {
+			if qg.PackageType == CORP_QUERY {
+				if q := qg.GetQuery(query); q != nil {
+					return q
+				}
+			}
+		}
+	}
+	return qc.FindProductQuery(language, query)
+}
+
+func (qc *QueryCollection) FindProductQuery(language, query string) *Query {
+	if ql := qc.GetQueryLanguage(language); ql != nil {
+		for _, qg := range ql.QueryGroups {
+			if qg.PackageType == PRODUCT_QUERY {
+				if q := qg.GetQuery(query); q != nil {
+					return q
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (qc *QueryCollection) GetCustomQueryCollection() QueryCollection {
 	var cqc QueryCollection
 
