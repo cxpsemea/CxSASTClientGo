@@ -596,7 +596,7 @@ func (qc *QueryCollection) OverrideList(queryId uint64) []string {
 
 	pre := ""
 	for q := qc.GetQueryByID(queryId); q != nil; q = qc.GetQueryByID(q.BaseQueryID) {
-		path = append(path, fmt.Sprintf("%v%v\n", pre, q.StringDetailed()))
+		path = append(path, fmt.Sprintf("%v%v", pre, q.StringDetailed()))
 		pre = pre + " -> "
 		if q.QueryID == q.BaseQueryID {
 			break
