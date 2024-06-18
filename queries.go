@@ -589,3 +589,19 @@ func (c SASTClient) QueryGroupLink(q *QueryGroup) string {
 func (c SASTClient) QueryLanguageLink(q *QueryLanguage) string {
 	return fmt.Sprintf("%v/CxWebClient/QueriesExplorer.aspx?language=%v", c.baseUrl, q.Name)
 }
+
+// convenience function for debugging
+func (qc *QueryCollection) OverrideList(queryId uint64) []string {
+	path := []string{}
+
+	pre := ""
+	for q := qc.GetQueryByID(queryId); q != nil; q = qc.GetQueryByID(q.BaseQueryID) {
+		path = append(path, fmt.Sprintf("%v%v\n", pre, q.StringDetailed()))
+		pre = pre + " -> "
+		if q.QueryID == q.BaseQueryID {
+			break
+		}
+	}
+
+	return path
+}
