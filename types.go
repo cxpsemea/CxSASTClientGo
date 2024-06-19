@@ -158,16 +158,21 @@ type ProjectSettings struct {
 }
 
 type Query struct {
-	Name         string
-	QueryID      uint64 `xml:"QueryId"`
-	BaseQueryID  uint64
-	CWE          uint64 `xml:"Cwe"`
-	Severity     int
-	PackageID    uint64 `xml:"PackageId"`
-	Language     string
-	Group        string
-	IsExecutable bool        `xml:"IsExecutable"`
-	OwningGroup  *QueryGroup `json:"-"`
+	Name          string
+	QueryID       uint64 `xml:"QueryId"`
+	BaseQueryID   uint64
+	CWE           uint64 `xml:"Cwe"`
+	Severity      int
+	PackageID     uint64 `xml:"PackageId"`
+	Language      string
+	Group         string
+	IsExecutable  bool        `xml:"IsExecutable"`
+	Source        string      `xml:"Source"`
+	DescriptionID uint64      `xml:"CxDescriptionID"`
+	OwningGroup   *QueryGroup `json:"-"`
+	Dependencies  []uint64    `json:"-"`
+	UnknownCalls  []string    `json:"-"`
+	IsValid       bool        `json:"-"`
 }
 
 type QueryGroup struct {
