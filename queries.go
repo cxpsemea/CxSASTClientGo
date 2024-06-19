@@ -584,7 +584,7 @@ func (qc *QueryCollection) GetQueryDependencies(q *Query) []string {
 	for _, id := range q.Dependencies {
 		if !slices.Contains(deps, id) {
 			qq := qc.GetQueryByID(id)
-			if qq != nil {
+			if qq != nil && qq.IsCustom() {
 				ret = append(ret, fmt.Sprintf(" - depends on query outside of the inheritance hierarchy: %v", qq.StringDetailed()))
 			}
 		}
