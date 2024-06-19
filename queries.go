@@ -354,6 +354,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 		for gid, qg := range ql.QueryGroups {
 			for qid := range qg.Queries {
 				qq := &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid]
+
 				if !qq.IsCustom() {
 					qq.IsValid = true
 				} else {
@@ -368,6 +369,8 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 							continue
 						}
 					}
+
+					qq.IsValid = true
 
 					open_calls := open_call.FindAllStringSubmatch(qq.Source, -1)
 					base_calls := base_call.FindAllStringSubmatch(qq.Source, -1)
