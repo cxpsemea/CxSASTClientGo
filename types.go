@@ -172,6 +172,7 @@ type Query struct {
 	OwningGroup   *QueryGroup `json:"-"`
 	Dependencies  []uint64    `json:"-"`
 	UnknownCalls  []string    `json:"-"`
+	IsValid       bool        `json:"-"`
 }
 
 type QueryGroup struct {

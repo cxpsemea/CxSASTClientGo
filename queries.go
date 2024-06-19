@@ -63,7 +63,7 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 							LanguageName    string
 							PackageTypeName string
 							PackageType     string
-							ProjectId       uint64
+							ProjectId       int64
 							OwningTeam      int64
 						} `xml:"CxWSQueryGroup"`
 					}
@@ -95,12 +95,13 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 
 			if qg == nil {
 				ql.QueryGroups = append(ql.QueryGroups, QueryGroup{
-					g.Name, g.PackageId, []Query{}, g.LanguageName, g.ProjectId, g.PackageType, uint64(g.OwningTeam),
+					g.Name, g.PackageId, []Query{}, g.LanguageName, uint64(g.ProjectId), g.PackageType, uint64(g.OwningTeam),
 				})
 				qg = &ql.QueryGroups[len(ql.QueryGroups)-1]
 			}
 
 			qg.Queries = append(qg.Queries, q)
+			q.OwningGroup = qg
 		}
 	}
 
@@ -161,6 +162,7 @@ func (qc *QueryCollection) AddQuery(l *QueryLanguage, g *QueryGroup, q *Query) {
 	}
 
 	qg.Queries = append(qg.Queries, *q)
+	q.OwningGroup = qg
 }
 
 func (qc *QueryCollection) LinkBaseQueries(teamsByID *map[uint64]*Team, projectsByID *map[uint64]*Project) {
@@ -352,7 +354,20 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 		for gid, qg := range ql.QueryGroups {
 			for qid := range qg.Queries {
 				qq := &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid]
-				if qq.IsCustom() {
+				if !qq.IsCustom() {
+					qq.IsValid = true
+				} else {
+					if qg.OwningTeamID > 0 {
+						if _, ok := (*teamsByID)[qg.OwningTeamID]; !ok {
+							qq.IsValid = false // team doesn't exist
+							continue
+						}
+					} else if qg.OwningProjectID > 0 {
+						if _, ok := (*projectsByID)[qg.OwningProjectID]; !ok {
+							qq.IsValid = false // project doesn't exist
+							continue
+						}
+					}
 
 					open_calls := open_call.FindAllStringSubmatch(qq.Source, -1)
 					base_calls := base_call.FindAllStringSubmatch(qq.Source, -1)
@@ -541,6 +556,42 @@ func (q *Query) IsCustom() bool {
 }
 func (q *QueryGroup) IsCustom() bool {
 	return q.PackageID >= 100000
+}
+
+/*
+This function returns some information about a query which may explain failure to migrate to CheckmarxOne
+- query depends on other queries that may not exist (may need to be migrated first)
+- query belongs to a non-existent project or team (has nowhere to migrate to)
+- returns an empty array for product-default queries
+*/
+func (qc *QueryCollection) GetQueryDependencies(q *Query) []string {
+	ret := []string{}
+	if !q.IsCustom() {
+		return ret
+	}
+
+	deps := []uint64{}
+	for qq := q; qq != nil; qq = qc.GetQueryByID(qq.BaseQueryID) {
+		deps = append(deps, qq.QueryID)
+		if qq.BaseQueryID == qq.QueryID {
+			break
+		}
+	}
+
+	for _, id := range q.Dependencies {
+		if !slices.Contains(deps, id) {
+			qq := qc.GetQueryByID(id)
+			if qq != nil {
+				ret = append(ret, fmt.Sprintf(" - depends on query outside of the inheritance hierarchy: %v", qq.StringDetailed()))
+			}
+		}
+	}
+
+	if len(q.UnknownCalls) > 0 {
+		ret = append(ret, fmt.Sprintf(" - calls the following unknown functions: %v", strings.Join(q.UnknownCalls, ", ")))
+	}
+
+	return ret
 }
 
 func (q *Query) String() string {
