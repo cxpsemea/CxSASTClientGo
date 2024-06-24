@@ -170,8 +170,9 @@ type Query struct {
 	Source        string      `xml:"Source"`
 	DescriptionID uint64      `xml:"CxDescriptionID"`
 	OwningGroup   *QueryGroup `json:"-"`
-	Dependencies  []uint64    `json:"-"`
-	UnknownCalls  []string    `json:"-"`
+	Dependencies  []uint64    `json:"-"` // dependencies on queries outside of the inheritance hierarchy
+	UnknownCalls  []string    `json:"-"` // calls ot functions that are not other CxQL queries (may be API)
+	Hierarchy     []uint64    `json:"-"` // inheritance hierarchy
 	IsValid       bool        `json:"-"`
 }
 
