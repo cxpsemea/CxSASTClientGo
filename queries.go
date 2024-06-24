@@ -413,7 +413,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
 								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
-									if q.IsCustom() {
+									if !q.IsCustom() {
 										qq.Dependencies = append(qq.Dependencies, q.QueryID)
 									} else {
 										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
@@ -453,7 +453,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
 								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
-									if q.IsCustom() {
+									if !q.IsCustom() {
 										qq.Dependencies = append(qq.Dependencies, q.QueryID)
 									} else {
 										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
