@@ -601,14 +601,17 @@ func (qc *QueryCollection) GetQueryDependencies(q *Query) []string {
 		return ret
 	}
 
-	deps := qc.QueryHierarchy(q.QueryID)
-
 	for _, id := range q.Dependencies {
-		if !slices.Contains(deps, id) {
-			qq := qc.GetQueryByID(id)
-			if qq != nil && qq.IsCustom() {
-				ret = append(ret, fmt.Sprintf(" - depends on query outside of the inheritance hierarchy: %v", qq.StringDetailed()))
-			}
+		qq := qc.GetQueryByID(id)
+		if qq != nil && qq.IsCustom() {
+			ret = append(ret, fmt.Sprintf(" - depends on product query outside of the inheritance hierarchy: %v", qq.StringDetailed()))
+		}
+	}
+
+	for _, id := range q.CustomDependencies {
+		qq := qc.GetQueryByID(id)
+		if qq != nil && qq.IsCustom() {
+			ret = append(ret, fmt.Sprintf(" - depends on custom query outside of the inheritance hierarchy: %v", qq.StringDetailed()))
 		}
 	}
 
