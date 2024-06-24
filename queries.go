@@ -413,7 +413,11 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
 								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
-									qq.Dependencies = append(qq.Dependencies, q.QueryID)
+									if q.IsCustom() {
+										qq.Dependencies = append(qq.Dependencies, q.QueryID)
+									} else {
+										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+									}
 								}
 							} else {
 								//fmt.Printf(" - %v -> unknown open call %v: %s\n", qq.StringDetailed(), matches[1], err)
@@ -449,12 +453,15 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
 								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
-									qq.Dependencies = append(qq.Dependencies, q.QueryID)
+									if q.IsCustom() {
+										qq.Dependencies = append(qq.Dependencies, q.QueryID)
+									} else {
+										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+									}
 								}
 							} else {
 								//fmt.Printf(" - %v -> unknown base call %v: %s\n", qq.StringDetailed(), matches[1], err)
 								if err == nil && !slices.Contains(qq.UnknownCalls, matches[1]) {
-
 									qq.UnknownCalls = append(qq.UnknownCalls, matches[1])
 								}
 							}
