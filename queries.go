@@ -414,9 +414,13 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
 								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
 									if !q.IsCustom() {
-										qq.Dependencies = append(qq.Dependencies, q.QueryID)
+										if !slices.Contains(qq.Dependencies, q.QueryID) {
+											qq.Dependencies = append(qq.Dependencies, q.QueryID)
+										}
 									} else {
-										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+										if !slices.Contains(qq.CustomDependencies, q.QueryID) {
+											qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+										}
 									}
 								}
 							} else {
@@ -452,11 +456,15 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
-								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
+								if !slices.Contains(hierarchy, q.QueryID) {
 									if !q.IsCustom() {
-										qq.Dependencies = append(qq.Dependencies, q.QueryID)
+										if !slices.Contains(qq.Dependencies, q.QueryID) {
+											qq.Dependencies = append(qq.Dependencies, q.QueryID)
+										}
 									} else {
-										qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+										if !slices.Contains(qq.CustomDependencies, q.QueryID) {
+											qq.CustomDependencies = append(qq.CustomDependencies, q.QueryID)
+										}
 									}
 								}
 							} else {
