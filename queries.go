@@ -340,6 +340,17 @@ func (qc *QueryCollection) GetQueryByID(qid uint64) *Query {
 	return nil
 }
 
+func (qc *QueryCollection) GenerateHierarchy(query *Query) {
+	hierarchy := []uint64{}
+
+	if query.BaseQueryID != query.QueryID {
+		for q := query; q != nil && q.BaseQueryID != q.QueryID; q = qc.GetQueryByID(q.BaseQueryID) {
+			hierarchy = append(hierarchy, q.BaseQueryID)
+		}
+	}
+	query.Hierarchy = hierarchy
+}
+
 func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, projectsByID *map[uint64]*Project) {
 	/*projectOpenCalls := make(map[uint64][]string)
 	projectBaseCalls := make(map[uint64][]string)
@@ -350,9 +361,18 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 	open_call := regexp.MustCompile(`[^a-zA-Z0-9_.]([a-zA-Z_0-9]+)\(\)`)
 	base_call := regexp.MustCompile(`base\.([a-zA-Z_0-9]+)\(\)`)
 
-	for lid, ql := range qc.QueryLanguages {
-		for gid, qg := range ql.QueryGroups {
-			for qid := range qg.Queries {
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+				qc.GenerateHierarchy(&qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+			}
+		}
+	}
+
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			qg := &qc.QueryLanguages[lid].QueryGroups[gid]
+			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 				qq := &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid]
 
 				if !qq.IsCustom() {
@@ -374,6 +394,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 
 					open_calls := open_call.FindAllStringSubmatch(qq.Source, -1)
 					base_calls := base_call.FindAllStringSubmatch(qq.Source, -1)
+					hierarchy := qc.QueryHierarchy(qq.QueryID)
 
 					if len(open_calls) > 0 {
 						//fmt.Printf("%v Open calls:\n", qq.StringDetailed())
@@ -391,7 +412,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
-								if !slices.Contains(qq.Dependencies, q.QueryID) {
+								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
 									qq.Dependencies = append(qq.Dependencies, q.QueryID)
 								}
 							} else {
@@ -427,7 +448,7 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 
 							if q != nil {
 								//fmt.Printf(" - %v -> query %v\n", matches[1], q.StringDetailed())
-								if !slices.Contains(qq.Dependencies, q.QueryID) {
+								if !slices.Contains(qq.Dependencies, q.QueryID) && !slices.Contains(hierarchy, q.QueryID) {
 									qq.Dependencies = append(qq.Dependencies, q.QueryID)
 								}
 							} else {
@@ -573,13 +594,7 @@ func (qc *QueryCollection) GetQueryDependencies(q *Query) []string {
 		return ret
 	}
 
-	deps := []uint64{}
-	for qq := q; qq != nil; qq = qc.GetQueryByID(qq.BaseQueryID) {
-		deps = append(deps, qq.QueryID)
-		if qq.BaseQueryID == qq.QueryID {
-			break
-		}
-	}
+	deps := qc.QueryHierarchy(q.QueryID)
 
 	for _, id := range q.Dependencies {
 		if !slices.Contains(deps, id) {
@@ -597,8 +612,51 @@ func (qc *QueryCollection) GetQueryDependencies(q *Query) []string {
 	return ret
 }
 
+func (qc *QueryCollection) GetProjectQueries(project *Project) []*Query {
+	queries := []*Query{}
+
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			if qc.QueryLanguages[lid].QueryGroups[gid].OwningProjectID == project.ProjectID {
+				for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+					queries = append(queries, &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+				}
+			}
+		}
+	}
+
+	queries = append(queries, qc.GetTeamQueries(project.TeamID)...)
+	return queries
+}
+
+func (qc *QueryCollection) GetTeamQueries(teamId uint64) []*Query {
+	queries := []*Query{}
+
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			if qc.QueryLanguages[lid].QueryGroups[gid].OwningTeamID == teamId {
+				for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+					queries = append(queries, &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+				}
+			}
+		}
+	}
+	return queries
+}
+
 func (q *Query) String() string {
 	return fmt.Sprintf("[%d] %v -> %v -> %v", q.QueryID, q.Language, q.Group, q.Name)
+}
+
+func (qc *QueryCollection) GetRootQueryID(queryId uint64) uint64 {
+	var q *Query
+	for q = qc.GetQueryByID(queryId); q != nil && q.BaseQueryID != q.QueryID; q = qc.GetQueryByID(q.BaseQueryID) {
+		// nothing here, just crawl up the hierarchy
+	}
+	if q == nil {
+		return 0
+	}
+	return q.QueryID
 }
 
 func (q *Query) StringDetailed() string {
@@ -658,4 +716,18 @@ func (qc *QueryCollection) OverrideList(queryId uint64) []string {
 	}
 
 	return path
+}
+
+func (qc *QueryCollection) QueryHierarchy(queryId uint64) []uint64 {
+	queries := []uint64{}
+	query := qc.GetQueryByID(queryId)
+	if query.BaseQueryID != query.QueryID {
+		for q := qc.GetQueryByID(queryId); q != nil; q = qc.GetQueryByID(q.BaseQueryID) {
+			queries = append(queries, q.QueryID)
+			if q.BaseQueryID == q.QueryID {
+				break
+			}
+		}
+	}
+	return queries
 }
