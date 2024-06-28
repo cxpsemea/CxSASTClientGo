@@ -720,8 +720,8 @@ func (c SASTClient) QueryLanguageLink(q *QueryLanguage) string {
 	return fmt.Sprintf("%v/CxWebClient/QueriesExplorer.aspx?language=%v", c.baseUrl, q.Name)
 }
 
-// convenience function for debugging
-func (qc *QueryCollection) OverrideList(queryId uint64) []string {
+// convenience function for debugging (get this query's inheritance chain as strings)
+func (qc *QueryCollection) QueryHierarchyString(queryId uint64) []string {
 	path := []string{}
 
 	pre := ""
@@ -736,6 +736,7 @@ func (qc *QueryCollection) OverrideList(queryId uint64) []string {
 	return path
 }
 
+// convenience function for debugging (get this query's inheritance chain as ints)
 func (qc *QueryCollection) QueryHierarchy(queryId uint64) []uint64 {
 	queries := []uint64{}
 	query := qc.GetQueryByID(queryId)
