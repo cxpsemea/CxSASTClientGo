@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -111,4 +112,35 @@ func (c SASTClient) GetEngineConfigurationsSOAP() ([]EngineConfiguration, error)
 	}
 
 	return confs, err
+}
+
+func (c SASTClient) GetProjectLastFullScanIDODATA(project *Project) (uint64, error) {
+	response, err := c.sendODATARequest(fmt.Sprintf("v1/Scans?$filter=IsIncremental%%20eq%%20false%%20and%%20ScanType%%20eq%%201%%20and%%20ProjectId%%20eq%%20%d&$select=Id&$orderby=EngineFinishedOn%%20desc&$top=1", project.ProjectID))
+	if err != nil {
+		return 0, err
+	}
+
+	type responseStruct struct {
+		Value []struct {
+			Id uint64 `json:"Id"`
+		} `json:"value"`
+	}
+
+	var rs responseStruct
+
+	err = json.Unmarshal(response, &rs)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(rs.Value) != 1 {
+		return 0, fmt.Errorf("no last full scan available")
+	}
+
+	return rs.Value[0].Id, nil
+
+}
+
+func (s *Scan) String() string {
+	return fmt.Sprintf("Scan %d - Project %d, %d LOC: %v %v", s.ScanID, s.Project.ID, s.ScanState.LOC, s.Status.Name, s.DateAndTime.FinishedOn.Format(time.RFC3339))
 }

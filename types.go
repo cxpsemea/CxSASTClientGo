@@ -246,8 +246,18 @@ type Scan struct {
 		Name string
 	}
 	ScanState struct {
-		SourceID  string `json:"sourceId"`
-		CxVersion string `json:"cxVersion"`
+		Path       string `json:"path"`
+		FilesCount uint64 `json:"filesCount"`
+		LOC        uint64 `json:"linesOfCode"`
+		FailedLOC  uint64 `json:"failedLinesOfCode"`
+		SourceID   string `json:"sourceId"`
+		CxVersion  string `json:"cxVersion"`
+		Languages  []struct {
+			ID           uint64    `json:"languageID"`
+			Name         string    `json:"languageName"`
+			Hash         string    `json:"languageHash"`
+			CreationDate time.Time `json:"stateCreationDate"`
+		} `json:"languageStateCollection"`
 	}
 	DateAndTime struct {
 		StartedOn        SASTTime

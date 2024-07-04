@@ -118,6 +118,17 @@ func (c SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) 
 	return c.sendRequestInternal(c.soapClient, http.MethodPost, sasturl, strings.NewReader(soap_msg), header)
 }
 
+func (c SASTClient) sendODATARequest(query string) ([]byte, error) {
+	if c.soapClient == nil {
+		return []byte{}, errors.New("No SOAP client initialized")
+	}
+
+	sasturl := fmt.Sprintf("%v/CxWebInterface/odata/%v", c.baseUrl, query)
+	header := http.Header{}
+
+	return c.sendRequestInternal(c.soapClient, http.MethodGet, sasturl, nil, header)
+}
+
 func (c SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte) {
 	if len(requestBody) != 0 {
 		c.logger.Tracef("Request body: %s", string(requestBody))
@@ -163,10 +174,6 @@ func (c SASTClient) ClientsValid() (bool, bool) {
 	}
 
 	return rest_valid, soap_valid
-}
-
-func (s *Scan) String() string {
-	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.DateAndTime.FinishedOn.Format(time.RFC3339))
 }
 
 func (c SASTClient) String() string {
