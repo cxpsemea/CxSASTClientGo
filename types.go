@@ -104,11 +104,27 @@ type OIDCClient struct {
 }
 
 type PathNode struct {
-	FileName string
-	Line     uint64
-	Column   uint64
-	Name     string
-	Length   uint64
+	FileName   string
+	Line       uint64
+	Column     uint64
+	Name       string
+	Length     uint64
+	MethodLine uint64
+	NodeId     uint64
+}
+
+type PathResultInfo struct {
+	Source1           []string
+	AbsoluteFileName1 string
+	Line1             uint64
+	Column1           uint64
+	MethodLine1       uint64
+	Source2           []string
+	AbsoluteFileName2 string
+	Line2             uint64
+	Column2           uint64
+	MethodLine2       uint64
+	QueryId           uint64
 }
 
 type Preset struct {
@@ -170,10 +186,10 @@ type Query struct {
 	Source             string      `xml:"Source"`
 	DescriptionID      uint64      `xml:"CxDescriptionID"`
 	OwningGroup        *QueryGroup `json:"-"`
-	Dependencies       []uint64    `json:"-"` // dependencies on queries outside of the inheritance hierarchy
-	CustomDependencies []uint64    `json:"-"` // dependencies on custom queries outside of the inheritance hierarchy
-	UnknownCalls       []string    `json:"-"` // calls ot functions that are not other CxQL queries (may be API)
-	Hierarchy          []uint64    `json:"-"` // inheritance hierarchy
+	Dependencies       []uint64    `json:"-"`         // dependencies on queries outside of the inheritance hierarchy
+	CustomDependencies []uint64    `json:"-"`         // dependencies on custom queries outside of the inheritance hierarchy
+	UnknownCalls       []string    `json:"-"`         // calls ot functions that are not other CxQL queries (may be API)
+	Hierarchy          []uint64    `json:"Hierarchy"` // inheritance hierarchy
 	IsValid            bool        `json:"-"`
 }
 

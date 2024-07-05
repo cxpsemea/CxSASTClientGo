@@ -86,3 +86,20 @@ func (c SASTClient) DeleteTeamByID(teamId uint64) error {
 func (c SASTClient) TeamLink(t *Team) string {
 	return fmt.Sprintf("%v/CxRestAPI/auth/#/teams/id=%d", c.baseUrl, t.TeamID) // this link doesn't actually work, just takes you to the main page
 }
+
+func (c SASTClient) GetTeamHierarchy(teamId uint64, teamMap *map[uint64]*Team) []*Team {
+	hierarchy := []*Team{}
+
+	team, ok := (*teamMap)[teamId]
+	if !ok {
+		return hierarchy
+	}
+
+	hierarchy = append(hierarchy, team)
+
+	for team, ok := (*teamMap)[team.ParentID]; ok && team != nil; team, ok = (*teamMap)[team.ParentID] {
+		hierarchy = append(hierarchy, team)
+	}
+
+	return hierarchy
+}

@@ -111,6 +111,106 @@ func (qc *QueryCollection) FromXML(response []byte) error {
 	return nil
 }
 
+func (c SASTClient) GetResultPathsForQuerySOAP(scanID, queryID uint64) ([]ScanResult, error) {
+	type Envelope struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Text    string   `xml:",chardata"`
+		Soap    string   `xml:"soap,attr"`
+		Xsi     string   `xml:"xsi,attr"`
+		Xsd     string   `xml:"xsd,attr"`
+		Body    struct {
+			Text                           string `xml:",chardata"`
+			GetResultPathsForQueryResponse struct {
+				Text                         string `xml:",chardata"`
+				Xmlns                        string `xml:"xmlns,attr"`
+				GetResultPathsForQueryResult struct {
+					Text         string `xml:",chardata"`
+					IsSuccesfull string `xml:"IsSuccesfull"`
+					Paths        struct {
+						Text           string `xml:",chardata"`
+						CxWSResultPath []struct {
+							Text         string `xml:",chardata"`
+							SimilarityId int64  `xml:"SimilarityId"`
+							PathId       uint64 `xml:"PathId"`
+							Comment      string `xml:"Comment"`
+							State        uint64 `xml:"State"`
+							Severity     int64  `xml:"Severity"`
+							AssignedUser string `xml:"AssignedUser"`
+							Nodes        struct {
+								Text         string `xml:",chardata"`
+								CxWSPathNode []struct {
+									Text       string `xml:",chardata"`
+									Column     uint64 `xml:"Column"`
+									FullName   string `xml:"FullName"`
+									FileName   string `xml:"FileName"`
+									Length     uint64 `xml:"Length"`
+									Line       uint64 `xml:"Line"`
+									Name       string `xml:"Name"`
+									DOMID      string `xml:"DOM_Id"`
+									MethodLine uint64 `xml:"MethodLine"`
+									PathNodeId uint64 `xml:"PathNodeId"`
+								} `xml:"CxWSPathNode"`
+							} `xml:"Nodes"`
+						} `xml:"CxWSResultPath"`
+					} `xml:"Paths"`
+				} `xml:"GetResultPathsForQueryResult"`
+			} `xml:"GetResultPathsForQueryResponse"`
+		} `xml:"Body"`
+	}
+
+	var paths []ScanResult
+	var env Envelope
+
+	response, err := c.sendSOAPRequest("GetResultPathsForQuery", fmt.Sprintf("<sessionId></sessionId><scanId>%d</scanId><queryId>%d</queryId>", scanID, queryID))
+	if err != nil {
+		return paths, err
+	}
+
+	if err = xml.Unmarshal(response, &env); err != nil {
+		return paths, err
+	}
+
+	for _, p := range env.Body.GetResultPathsForQueryResponse.GetResultPathsForQueryResult.Paths.CxWSResultPath {
+		sr := ScanResult{
+			QueryName:         "",
+			QueryID:           queryID,
+			PathID:            p.PathId,
+			Line:              0,
+			Column:            0,
+			DetectionDate:     "",
+			Filename:          "",
+			DeepLink:          "",
+			Status:            "",
+			Severity:          "",
+			State:             "",
+			SimilarityID:      p.SimilarityId,
+			SourceMethod:      "",
+			DestinationMethod: "",
+			Group:             "",
+			Language:          "",
+			Nodes:             []PathNode{},
+		}
+
+		for _, n := range p.Nodes.CxWSPathNode {
+			sr.Nodes = append(
+				sr.Nodes,
+				PathNode{
+					FileName:   n.FileName,
+					Line:       n.Line,
+					Column:     n.Column,
+					Name:       n.Name,
+					Length:     n.Length,
+					MethodLine: n.MethodLine,
+					NodeId:     n.PathNodeId,
+				},
+			)
+		}
+
+		paths = append(paths, sr)
+	}
+	return paths, nil
+}
+
 func (qc *QueryCollection) LinkGroups() {
 	for lid := range qc.QueryLanguages {
 		for gid := range qc.QueryLanguages[lid].QueryGroups {
@@ -183,38 +283,18 @@ func (qc *QueryCollection) LinkBaseQueries(teamsByID *map[uint64]*Team, projects
 				case PRODUCT_QUERY:
 					productQueries[nicename] = query.QueryID
 					queriesById[query.QueryID].BaseQueryID = query.QueryID
-					/*
-						if query.Name == "Command_Injection" {
-							fmt.Printf("Added product query %v\n", queriesById[query.QueryID].StringDetailed())
-						}
-					*/
 				case CORP_QUERY:
 					teamQueries[0][nicename] = query.QueryID
-					/*
-						if query.Name == "Command_Injection" {
-							fmt.Printf("Added corp query %v\n", queriesById[query.QueryID].StringDetailed())
-						}
-					*/
 				case TEAM_QUERY:
 					if _, ok := teamQueries[group.OwningTeamID]; !ok {
 						teamQueries[group.OwningTeamID] = make(map[string]uint64)
 					}
 					teamQueries[group.OwningTeamID][nicename] = query.QueryID
-					/*
-						if query.Name == "Command_Injection" {
-							fmt.Printf("Added team query %v\n", queriesById[query.QueryID].StringDetailed())
-						}
-					*/
 				case PROJECT_QUERY:
 					if _, ok := projectQueries[group.OwningProjectID]; !ok {
 						projectQueries[group.OwningProjectID] = make(map[string]uint64)
 					}
 					projectQueries[group.OwningProjectID][nicename] = query.QueryID
-					/*
-						if query.Name == "Command_Injection" {
-							fmt.Printf("Added project query %v\n", queriesById[query.QueryID].StringDetailed())
-						}
-					*/
 				}
 			}
 		}
@@ -272,6 +352,16 @@ func (qc *QueryCollection) LinkBaseQueries(teamsByID *map[uint64]*Team, projects
 						queriesById[query.QueryID].BaseQueryID = baseID
 					}
 				}
+			}
+		}
+	}
+
+	// generate query hierarchy for each query
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+				qc.GenerateHierarchy(&qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+
 			}
 		}
 	}
@@ -361,13 +451,13 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 	open_call := regexp.MustCompile(`[^a-zA-Z0-9_.]([a-zA-Z_0-9]+)\(\)`)
 	base_call := regexp.MustCompile(`base\.([a-zA-Z_0-9]+)\(\)`)
 
-	for lid := range qc.QueryLanguages {
+	/*for lid := range qc.QueryLanguages {
 		for gid := range qc.QueryLanguages[lid].QueryGroups {
 			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 				qc.GenerateHierarchy(&qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
 			}
 		}
-	}
+	}*/
 
 	for lid := range qc.QueryLanguages {
 		for gid := range qc.QueryLanguages[lid].QueryGroups {
@@ -643,7 +733,7 @@ func (qc *QueryCollection) GetProjectQueries(project *Project) []*Query {
 		}
 	}
 
-	queries = append(queries, qc.GetTeamQueries(project.TeamID)...)
+	//queries = append(queries, qc.GetTeamQueries(project.TeamID)...)
 	return queries
 }
 
@@ -653,6 +743,21 @@ func (qc *QueryCollection) GetTeamQueries(teamId uint64) []*Query {
 	for lid := range qc.QueryLanguages {
 		for gid := range qc.QueryLanguages[lid].QueryGroups {
 			if qc.QueryLanguages[lid].QueryGroups[gid].OwningTeamID == teamId {
+				for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
+					queries = append(queries, &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
+				}
+			}
+		}
+	}
+	return queries
+}
+
+func (qc *QueryCollection) GetCorpQueries() []*Query {
+	queries := []*Query{}
+
+	for lid := range qc.QueryLanguages {
+		for gid := range qc.QueryLanguages[lid].QueryGroups {
+			if qc.QueryLanguages[lid].QueryGroups[gid].PackageType == CORP_QUERY {
 				for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 					queries = append(queries, &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid])
 				}

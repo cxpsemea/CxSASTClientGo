@@ -3,6 +3,7 @@ package CxSASTClientGo
 import (
 	"encoding/xml"
 	"fmt"
+	"slices"
 
 	"github.com/pkg/errors"
 )
@@ -146,6 +147,169 @@ func (c SASTClient) GetScanResultSummary(results []ScanResult) ScanResultSummary
 	return summary
 }
 
+func (c SASTClient) GetScanResultPathNodes(scanId, pathId uint64) ([]PathNode, error) {
+	type Envelope struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Text    string   `xml:",chardata"`
+		Soap    string   `xml:"soap,attr"`
+		Xsi     string   `xml:"xsi,attr"`
+		Xsd     string   `xml:"xsd,attr"`
+		Body    struct {
+			Text                  string `xml:",chardata"`
+			GetResultPathResponse struct {
+				Text                string `xml:",chardata"`
+				Xmlns               string `xml:"xmlns,attr"`
+				GetResultPathResult struct {
+					Text         string `xml:",chardata"`
+					IsSuccesfull string `xml:"IsSuccesfull"`
+					Path         struct {
+						Text         string `xml:",chardata"`
+						SimilarityId string `xml:"SimilarityId"`
+						PathId       string `xml:"PathId"`
+						Comment      string `xml:"Comment"`
+						State        string `xml:"State"`
+						Severity     string `xml:"Severity"`
+						AssignedUser string `xml:"AssignedUser"`
+						Nodes        struct {
+							Text         string `xml:",chardata"`
+							CxWSPathNode []struct {
+								Text       string `xml:",chardata"`
+								Column     uint64 `xml:"Column"`
+								FullName   string `xml:"FullName"`
+								FileName   string `xml:"FileName"`
+								Length     uint64 `xml:"Length"`
+								Line       uint64 `xml:"Line"`
+								Name       string `xml:"Name"`
+								DOMID      string `xml:"DOM_Id"`
+								MethodLine uint64 `xml:"MethodLine"`
+								PathNodeId uint64 `xml:"PathNodeId"`
+							} `xml:"CxWSPathNode"`
+						} `xml:"Nodes"`
+					} `xml:"Path"`
+				} `xml:"GetResultPathResult"`
+			} `xml:"GetResultPathResponse"`
+		} `xml:"Body"`
+	}
+
+	var pathResponse Envelope
+	results := []PathNode{}
+	response, err := c.sendSOAPRequest("GetResultsForScan", fmt.Sprintf("<sessionId></sessionId><scanId>%d</scanId><pathId>%d</pathId>", scanId, pathId))
+	if err != nil {
+		return results, err
+	}
+
+	if err = xml.Unmarshal(response, &pathResponse); err != nil {
+		return results, err
+	}
+
+	for _, n := range pathResponse.Body.GetResultPathResponse.GetResultPathResult.Path.Nodes.CxWSPathNode {
+		pn := PathNode{
+			FileName:   n.FileName,
+			Line:       n.Line,
+			Column:     n.Column,
+			Name:       n.Name,
+			Length:     n.Length,
+			MethodLine: n.MethodLine,
+			NodeId:     n.PathNodeId,
+		}
+
+		results = append(results, pn)
+	}
+
+	return results, nil
+}
+
+func (c SASTClient) GetResultsForScanSOAP(scanId uint64) ([]ScanResult, error) {
+	type Envelope struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Text    string   `xml:",chardata"`
+		Soap    string   `xml:"soap,attr"`
+		Xsi     string   `xml:"xsi,attr"`
+		Xsd     string   `xml:"xsd,attr"`
+		Body    struct {
+			Text                      string `xml:",chardata"`
+			GetResultsForScanResponse struct {
+				Text                    string `xml:",chardata"`
+				Xmlns                   string `xml:"xmlns,attr"`
+				GetResultsForScanResult struct {
+					Text         string `xml:",chardata"`
+					IsSuccesfull string `xml:"IsSuccesfull"`
+					Results      struct {
+						Text                 string `xml:",chardata"`
+						CxWSSingleResultData []struct {
+							Text             string `xml:",chardata"`
+							QueryId          uint64 `xml:"QueryId"`
+							PathId           uint64 `xml:"PathId"`
+							SourceFolder     string `xml:"SourceFolder"`
+							SourceFile       string `xml:"SourceFile"`
+							SourceLine       uint64 `xml:"SourceLine"`
+							SourceObject     string `xml:"SourceObject"`
+							DestFolder       string `xml:"DestFolder"`
+							DestFile         string `xml:"DestFile"`
+							DestLine         uint64 `xml:"DestLine"`
+							NumberOfNodes    uint64 `xml:"NumberOfNodes"`
+							DestObject       string `xml:"DestObject"`
+							Comment          string `xml:"Comment"`
+							State            int64  `xml:"State"`
+							Severity         int64  `xml:"Severity"`
+							AssignedUser     string `xml:"AssignedUser"`
+							ConfidenceLevel  string `xml:"ConfidenceLevel"`
+							ResultStatus     string `xml:"ResultStatus"`
+							IssueTicketID    string `xml:"IssueTicketID"`
+							QueryVersionCode uint64 `xml:"QueryVersionCode"`
+							SimilarityID     int64  `xml:"SimilarityID"`
+						} `xml:"CxWSSingleResultData"`
+					} `xml:"Results"`
+				} `xml:"GetResultsForScanResult"`
+			} `xml:"GetResultsForScanResponse"`
+		} `xml:"Body"`
+	}
+
+	var resultsResponse Envelope
+	results := []ScanResult{}
+	response, err := c.sendSOAPRequest("GetResultsForScan", fmt.Sprintf("<sessionId></sessionId><scanId>%d</scanId>", scanId))
+	if err != nil {
+		return results, err
+	}
+
+	if err = xml.Unmarshal(response, &resultsResponse); err != nil {
+		return results, err
+	}
+
+	for _, r := range resultsResponse.Body.GetResultsForScanResponse.GetResultsForScanResult.Results.CxWSSingleResultData {
+		sr := ScanResult{
+			QueryName:         "",
+			QueryID:           r.QueryId,
+			PathID:            r.PathId,
+			Line:              r.DestLine,
+			Column:            0,
+			DetectionDate:     "",
+			Filename:          r.DestFile,
+			DeepLink:          "",
+			Status:            r.ResultStatus,
+			Severity:          "", // todo from: r.Severity
+			State:             "", // todo from: r.State,
+			SimilarityID:      r.SimilarityID,
+			SourceMethod:      "",
+			DestinationMethod: "",
+			Group:             "",
+			Language:          "",
+			Nodes:             []PathNode{},
+		}
+
+		nodes, err := c.GetScanResultPathNodes(scanId, sr.PathID)
+		if err != nil {
+			c.logger.Errorf("Failed to get nodes for scan %d path %d", scanId, sr.PathID)
+		} else {
+			sr.Nodes = nodes
+		}
+
+		results = append(results, sr)
+	}
+
+	return results, nil
+}
+
 func (c SASTClient) GetResultStateListSOAP() ([]ResultState, error) {
 	response, err := c.sendSOAPRequest("GetResultStateList", "<sessionID></sessionID>")
 	if err != nil {
@@ -210,4 +374,33 @@ func (s ScanResultSummary) String() string {
 			s.High.Urgent+s.Medium.Urgent+s.Low.Urgent+s.Information.Urgent,
 			s.High.ProposedNotExploitable+s.Medium.ProposedNotExploitable+s.Low.ProposedNotExploitable+s.Information.ProposedNotExploitable,
 			s.High.NotExploitable+s.Medium.NotExploitable+s.Low.NotExploitable+s.Information.NotExploitable))
+}
+
+func (c SASTClient) GetAllPathResultInfos(scanId uint64) ([]PathResultInfo, error) {
+	var pris []PathResultInfo
+
+	results, err := c.GetResultsForScanSOAP(scanId)
+	if err != nil {
+		return pris, err
+	}
+
+	sourceFiles := []string{}
+	for _, r := range results {
+		if len(r.Nodes) > 0 {
+			if !slices.Contains(sourceFiles, r.Nodes[0].FileName) {
+				sourceFiles = append(sourceFiles, r.Nodes[0].FileName)
+			}
+			if !slices.Contains(sourceFiles, r.Nodes[len(r.Nodes)-1].FileName) {
+				sourceFiles = append(sourceFiles, r.Nodes[len(r.Nodes)-1].FileName)
+			}
+		}
+	}
+
+	/*
+		for _, f := range sourceFiles {
+
+		}
+	*/
+
+	return pris, nil
 }
