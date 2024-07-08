@@ -125,6 +125,7 @@ type PathResultInfo struct {
 	Column2           uint64
 	MethodLine2       uint64
 	QueryId           uint64
+	SimilarityID      int64
 }
 
 type Preset struct {
@@ -335,6 +336,11 @@ type SourceFilters struct {
 	FoldersPattern string `json:"excludeFoldersPattern"`
 	FilesPattern   string `json:"excludeFilesPattern"`
 	PathPattern    string `json:"pathFilter"`
+}
+
+type SourceFile struct {
+	Filename string
+	Source   string
 }
 
 type Team struct {

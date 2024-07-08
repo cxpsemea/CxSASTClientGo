@@ -3,7 +3,6 @@ package CxSASTClientGo
 import (
 	"encoding/xml"
 	"fmt"
-	"slices"
 
 	"github.com/pkg/errors"
 )
@@ -193,7 +192,7 @@ func (c SASTClient) GetScanResultPathNodes(scanId, pathId uint64) ([]PathNode, e
 
 	var pathResponse Envelope
 	results := []PathNode{}
-	response, err := c.sendSOAPRequest("GetResultsForScan", fmt.Sprintf("<sessionId></sessionId><scanId>%d</scanId><pathId>%d</pathId>", scanId, pathId))
+	response, err := c.sendSOAPRequest("GetResultPath", fmt.Sprintf("<sessionId></sessionId><scanId>%d</scanId><pathId>%d</pathId>", scanId, pathId))
 	if err != nil {
 		return results, err
 	}
@@ -374,33 +373,4 @@ func (s ScanResultSummary) String() string {
 			s.High.Urgent+s.Medium.Urgent+s.Low.Urgent+s.Information.Urgent,
 			s.High.ProposedNotExploitable+s.Medium.ProposedNotExploitable+s.Low.ProposedNotExploitable+s.Information.ProposedNotExploitable,
 			s.High.NotExploitable+s.Medium.NotExploitable+s.Low.NotExploitable+s.Information.NotExploitable))
-}
-
-func (c SASTClient) GetAllPathResultInfos(scanId uint64) ([]PathResultInfo, error) {
-	var pris []PathResultInfo
-
-	results, err := c.GetResultsForScanSOAP(scanId)
-	if err != nil {
-		return pris, err
-	}
-
-	sourceFiles := []string{}
-	for _, r := range results {
-		if len(r.Nodes) > 0 {
-			if !slices.Contains(sourceFiles, r.Nodes[0].FileName) {
-				sourceFiles = append(sourceFiles, r.Nodes[0].FileName)
-			}
-			if !slices.Contains(sourceFiles, r.Nodes[len(r.Nodes)-1].FileName) {
-				sourceFiles = append(sourceFiles, r.Nodes[len(r.Nodes)-1].FileName)
-			}
-		}
-	}
-
-	/*
-		for _, f := range sourceFiles {
-
-		}
-	*/
-
-	return pris, nil
 }
