@@ -104,11 +104,32 @@ type OIDCClient struct {
 }
 
 type PathNode struct {
-	FileName string
-	Line     uint64
-	Column   uint64
-	Name     string
-	Length   uint64
+	FileName   string
+	Line       uint64
+	Column     uint64
+	Name       string
+	Length     uint64
+	MethodLine uint64
+	NodeId     uint64
+}
+
+type PathResultInfo struct {
+	Source1           []string
+	AbsoluteFileName1 string
+	Line1             uint64
+	Column1           uint64
+	MethodLine1       uint64
+	Source2           []string
+	AbsoluteFileName2 string
+	Line2             uint64
+	Column2           uint64
+	MethodLine2       uint64
+	QueryID           uint64
+	State             string
+	Severity          string
+	PathID            uint64
+	SimilarityID      int64
+	Comment           string
 }
 
 type Preset struct {
@@ -170,10 +191,10 @@ type Query struct {
 	Source             string      `xml:"Source"`
 	DescriptionID      uint64      `xml:"CxDescriptionID"`
 	OwningGroup        *QueryGroup `json:"-"`
-	Dependencies       []uint64    `json:"-"` // dependencies on queries outside of the inheritance hierarchy
-	CustomDependencies []uint64    `json:"-"` // dependencies on custom queries outside of the inheritance hierarchy
-	UnknownCalls       []string    `json:"-"` // calls ot functions that are not other CxQL queries (may be API)
-	Hierarchy          []uint64    `json:"-"` // inheritance hierarchy
+	Dependencies       []uint64    `json:"-"`         // dependencies on queries outside of the inheritance hierarchy
+	CustomDependencies []uint64    `json:"-"`         // dependencies on custom queries outside of the inheritance hierarchy
+	UnknownCalls       []string    `json:"-"`         // calls ot functions that are not other CxQL queries (may be API)
+	Hierarchy          []uint64    `json:"Hierarchy"` // inheritance hierarchy
 	IsValid            bool        `json:"-"`
 }
 
@@ -246,8 +267,18 @@ type Scan struct {
 		Name string
 	}
 	ScanState struct {
-		SourceID  string `json:"sourceId"`
-		CxVersion string `json:"cxVersion"`
+		Path       string `json:"path"`
+		FilesCount uint64 `json:"filesCount"`
+		LOC        uint64 `json:"linesOfCode"`
+		FailedLOC  uint64 `json:"failedLinesOfCode"`
+		SourceID   string `json:"sourceId"`
+		CxVersion  string `json:"cxVersion"`
+		Languages  []struct {
+			ID           uint64    `json:"languageID"`
+			Name         string    `json:"languageName"`
+			Hash         string    `json:"languageHash"`
+			CreationDate time.Time `json:"stateCreationDate"`
+		} `json:"languageStateCollection"`
 	}
 	DateAndTime struct {
 		StartedOn        SASTTime
@@ -274,6 +305,7 @@ type ScanResult struct {
 	DestinationMethod string
 	Group             string
 	Language          string
+	Comment           string
 	Nodes             []PathNode
 }
 
@@ -304,11 +336,122 @@ type ScanSettings struct {
 	ZippedSource           *[]byte `json:"zippedSource,omitempty"`
 }
 
+type ScanSettingsSOAP struct {
+	Text         string `xml:",chardata"`
+	IsSuccesfull string `xml:"IsSuccesfull"`
+	Started      struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"Started"`
+	Finished struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"Finished"`
+	RequestStarted struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"RequestStarted"`
+	RequestComplete struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"RequestComplete"`
+	ScanRisk                    string `xml:"ScanRisk"`
+	Preset                      string `xml:"Preset"`
+	Path                        string `xml:"Path"`
+	Comment                     string `xml:"Comment"`
+	LOC                         string `xml:"LOC"`
+	FilesCount                  string `xml:"FilesCount"`
+	High                        string `xml:"High"`
+	Medium                      string `xml:"Medium"`
+	Low                         string `xml:"Low"`
+	Info                        string `xml:"Info"`
+	ScanRiskSeverity            string `xml:"ScanRiskSeverity"`
+	ScanRiskQuantity            string `xml:"ScanRiskQuantity"`
+	IsIncremental               string `xml:"IsIncremental"`
+	ScanType                    string `xml:"ScanType"`
+	ScanLanguageStateCollection struct {
+		Text                   string `xml:",chardata"`
+		CxWSQueryLanguageState []struct {
+			Text              string `xml:",chardata"`
+			LanguageID        string `xml:"LanguageID"`
+			LanguageName      string `xml:"LanguageName"`
+			LanguageHash      string `xml:"LanguageHash"`
+			StateCreationDate string `xml:"StateCreationDate"`
+		} `xml:"CxWSQueryLanguageState"`
+	} `xml:"ScanLanguageStateCollection"`
+	EngineStart struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"EngineStart"`
+	EngineFinish struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"EngineFinish"`
+	ScanQueued struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"ScanQueued"`
+	TotalScanTime             string `xml:"TotalScanTime"`
+	TotalEngineTime           string `xml:"TotalEngineTime"`
+	StatisticsCalculationDate struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"StatisticsCalculationDate"`
+	ProjectName         string `xml:"ProjectName"`
+	TeamName            string `xml:"TeamName"`
+	ScanCompletedStatus string `xml:"ScanCompletedStatus"`
+}
+
 type SourceFilters struct {
 	ProjectID      uint64 `json:"projectId"`
 	FoldersPattern string `json:"excludeFoldersPattern"`
 	FilesPattern   string `json:"excludeFilesPattern"`
 	PathPattern    string `json:"pathFilter"`
+}
+
+type SourceFile struct {
+	Filename string
+	Source   string
 }
 
 type Team struct {

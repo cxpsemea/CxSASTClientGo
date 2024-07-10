@@ -118,6 +118,35 @@ func (c SASTClient) sendSOAPRequest(method string, body string) ([]byte, error) 
 	return c.sendRequestInternal(c.soapClient, http.MethodPost, sasturl, strings.NewReader(soap_msg), header)
 }
 
+func (c SASTClient) sendSOAPRequestAudit_v7(method string, body string) ([]byte, error) {
+	if c.soapClient == nil {
+		return []byte{}, errors.New("No SOAP client initialized")
+	}
+
+	sasturl := fmt.Sprintf("%v/CxWebInterface/Audit/CxAuditWebService.asmx", c.baseUrl)
+	header := http.Header{}
+	SOAPEnvOpen := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>"
+	SOAPEnvClose := "</soap:Body></soap:Envelope>"
+
+	header.Set("Content-Type", "text/xml; charset=utf-8")
+	header.Set("SOAPAction", fmt.Sprintf("%v/%v", "http://Checkmarx.com/v7", method))
+	//header.Set("Authorization", "Bearer "+c.soapToken)
+
+	soap_msg := fmt.Sprintf("%v<%v xmlns=\"http://Checkmarx.com/v7\">%v</%v>%v", SOAPEnvOpen, method, body, method, SOAPEnvClose)
+	return c.sendRequestInternal(c.soapClient, http.MethodPost, sasturl, strings.NewReader(soap_msg), header)
+}
+
+func (c SASTClient) sendODATARequest(query string) ([]byte, error) {
+	if c.soapClient == nil {
+		return []byte{}, errors.New("No SOAP client initialized")
+	}
+
+	sasturl := fmt.Sprintf("%v/CxWebInterface/odata/%v", c.baseUrl, query)
+	header := http.Header{}
+
+	return c.sendRequestInternal(c.soapClient, http.MethodGet, sasturl, nil, header)
+}
+
 func (c SASTClient) recordRequestDetailsInErrorCase(requestBody []byte, responseBody []byte) {
 	if len(requestBody) != 0 {
 		c.logger.Tracef("Request body: %s", string(requestBody))
@@ -163,10 +192,6 @@ func (c SASTClient) ClientsValid() (bool, bool) {
 	}
 
 	return rest_valid, soap_valid
-}
-
-func (s *Scan) String() string {
-	return fmt.Sprintf("Scan ID: %d, Project ID: %d, Status: %v, Time: %v", s.ScanID, s.Project.ID, s.Status, s.DateAndTime.FinishedOn.Format(time.RFC3339))
 }
 
 func (c SASTClient) String() string {
