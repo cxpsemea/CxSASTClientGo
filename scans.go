@@ -1,6 +1,7 @@
 package CxSASTClientGo
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -144,6 +145,45 @@ func (c SASTClient) GetProjectLastFullScanIDODATA(project *Project) (uint64, err
 
 }
 
+func (c SASTClient) GetScanSourceCodeByIDSOAP(scanId uint64) ([]byte, error) {
+	var zipfile []byte
+	type Envelope struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Text    string   `xml:",chardata"`
+		Soap    string   `xml:"soap,attr"`
+		Xsi     string   `xml:"xsi,attr"`
+		Xsd     string   `xml:"xsd,attr"`
+		Body    struct {
+			Text                         string `xml:",chardata"`
+			GetSourceCodeForScanResponse struct {
+				Text                       string `xml:",chardata"`
+				Xmlns                      string `xml:"xmlns,attr"`
+				GetSourceCodeForScanResult struct {
+					Text                string `xml:",chardata"`
+					IsSuccesfull        string `xml:"IsSuccesfull"`
+					SourceCodeContainer struct {
+						Text       string `xml:",chardata"`
+						ZippedFile string `xml:"ZippedFile"`
+						FileName   string `xml:"FileName"`
+					} `xml:"sourceCodeContainer"`
+				} `xml:"GetSourceCodeForScanResult"`
+			} `xml:"GetSourceCodeForScanResponse"`
+		} `xml:"Body"`
+	}
+
+	response, err := c.sendSOAPRequestAudit_v7("GetSourceCodeForScan", fmt.Sprintf("<sessionID></sessionID><scanId>%v</scanId>", scanId))
+	if err != nil {
+		return zipfile, err
+	}
+
+	var env Envelope
+	if err = xml.Unmarshal(response, &env); err != nil {
+		return zipfile, err
+	}
+
+	return base64.StdEncoding.DecodeString(env.Body.GetSourceCodeForScanResponse.GetSourceCodeForScanResult.SourceCodeContainer.ZippedFile)
+}
+
 func (c SASTClient) GetSourcesByScanIDSOAP(scanId uint64, files []string) ([]SourceFile, error) {
 	sourceFiles := make([]SourceFile, 0)
 	type Envelope struct {
@@ -203,6 +243,36 @@ func (c SASTClient) GetSourcesByScanIDSOAP(scanId uint64, files []string) ([]Sou
 	}
 
 	return sourceFiles, nil
+}
+
+func (c SASTClient) GetScanSettingsByIDSOAP(scanId uint64) (ScanSettingsSOAP, error) {
+	type Envelope struct {
+		XMLName xml.Name `xml:"Envelope"`
+		Text    string   `xml:",chardata"`
+		Soap    string   `xml:"soap,attr"`
+		Xsi     string   `xml:"xsi,attr"`
+		Xsd     string   `xml:"xsd,attr"`
+		Body    struct {
+			Text                   string `xml:",chardata"`
+			GetScanSummaryResponse struct {
+				Text                 string           `xml:",chardata"`
+				Xmlns                string           `xml:"xmlns,attr"`
+				GetScanSummaryResult ScanSettingsSOAP `xml:"GetScanSummaryResult"`
+			} `xml:"GetScanSummaryResponse"`
+		} `xml:"Body"`
+	}
+
+	response, err := c.sendSOAPRequest("GetScanSummary", fmt.Sprintf("<i_SessionID></i_SessionID><i_ScanID>%v</i_ScanID>", scanId))
+	if err != nil {
+		return ScanSettingsSOAP{}, err
+	}
+
+	var env Envelope
+	if err = xml.Unmarshal(response, &env); err != nil {
+		return ScanSettingsSOAP{}, err
+	}
+
+	return env.Body.GetScanSummaryResponse.GetScanSummaryResult, nil
 }
 
 func (s *Scan) String() string {
@@ -265,8 +335,12 @@ func (c SASTClient) GetAllPathResultInfos(scanId uint64) ([]PathResultInfo, erro
 				Line2:             r.Nodes[lastnode].Line,
 				Column2:           r.Nodes[lastnode].Column,
 				MethodLine2:       r.Nodes[lastnode].MethodLine,
-				QueryId:           r.QueryID,
+				QueryID:           r.QueryID,
+				State:             r.State,
+				PathID:            r.PathID,
+				Severity:          r.Severity,
 				SimilarityID:      r.SimilarityID,
+				Comment:           r.Comment,
 			})
 		}
 	}

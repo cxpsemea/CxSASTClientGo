@@ -3,6 +3,7 @@ package CxSASTClientGo
 import (
 	"encoding/xml"
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 )
@@ -50,6 +51,7 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 				DetectionDate string   `xml:"DetectionDate,attr"`
 				Severity      string   `xml:"Severity,attr"`
 				FalsePositive string   `xml:"FalsePositive,attr"`
+				Comment       string   `xml:"Remark,attr"`
 
 				Path struct {
 					PathID            uint64     `xml:"PathId,attr"`
@@ -70,38 +72,29 @@ func (c SASTClient) GetResultsFromXML(xmlReportData []byte) ([]ScanResult, error
 	for _, query := range xmlResult.Queries {
 		for _, result := range query.Results {
 
-			auditState := "TO_VERIFY"
-			switch result.State {
-			case "1":
-				auditState = "NOT_EXPLOITABLE"
-			case "2":
-				auditState = "CONFIRMED"
-			case "3":
-				auditState = "URGENT"
-			case "4":
-				auditState = "PROPOSED_NOT_EXPLOITABLE"
-			default:
-				auditState = "TO_VERIFY"
-			}
+			stateInt, _ := strconv.Atoi(result.State)
+
+			auditState := StateToString(int64(stateInt))
 
 			results = append(results, ScanResult{
-				query.Name,
-				query.Id,
-				result.Path.PathID,
-				result.Line,
-				result.Column,
-				result.DetectionDate,
-				result.Filename,
-				result.DeepLink,
-				result.Status,
-				result.Severity,
-				auditState,
-				result.Path.SimilarityID,
-				result.Path.SourceMethod,
-				result.Path.DestinationMethod,
-				query.Group,
-				query.Language,
-				result.Path.Nodes,
+				QueryName:         query.Name,
+				QueryID:           query.Id,
+				PathID:            result.Path.PathID,
+				Line:              result.Line,
+				Column:            result.Column,
+				DetectionDate:     result.DetectionDate,
+				Filename:          result.Filename,
+				DeepLink:          result.DeepLink,
+				Status:            result.Status,
+				Severity:          result.Severity,
+				State:             auditState,
+				SimilarityID:      result.Path.SimilarityID,
+				SourceMethod:      result.Path.SourceMethod,
+				DestinationMethod: result.Path.DestinationMethod,
+				Group:             query.Group,
+				Language:          query.Language,
+				Comment:           result.Comment,
+				Nodes:             result.Path.Nodes,
 			})
 		}
 	}
@@ -286,13 +279,14 @@ func (c SASTClient) GetResultsForScanSOAP(scanId uint64) ([]ScanResult, error) {
 			Filename:          r.DestFile,
 			DeepLink:          "",
 			Status:            r.ResultStatus,
-			Severity:          "", // todo from: r.Severity
-			State:             "", // todo from: r.State,
+			Severity:          SeverityToString(r.Severity), // todo from: r.Severity
+			State:             StateToString(r.State),       // todo from: r.State,
 			SimilarityID:      r.SimilarityID,
 			SourceMethod:      "",
 			DestinationMethod: "",
 			Group:             "",
 			Language:          "",
+			Comment:           r.Comment,
 			Nodes:             []PathNode{},
 		}
 
@@ -307,6 +301,38 @@ func (c SASTClient) GetResultsForScanSOAP(scanId uint64) ([]ScanResult, error) {
 	}
 
 	return results, nil
+}
+
+func StateToString(state int64) string {
+	switch state {
+	case 1:
+		return "NOT_EXPLOITABLE"
+	case 2:
+		return "CONFIRMED"
+	case 3:
+		return "URGENT"
+	case 4:
+		return "PROPOSED_NOT_EXPLOITABLE"
+	default:
+		return "TO_VERIFY"
+	}
+}
+
+func SeverityToString(sev int64) string {
+	switch sev {
+	case 0:
+		return "Information"
+	case 1:
+		return "Low"
+	case 2:
+		return "Medium"
+	case 3:
+		return "High"
+	case 4:
+		return "Critical"
+	default:
+		return "Unknown"
+	}
 }
 
 func (c SASTClient) GetResultStateListSOAP() ([]ResultState, error) {

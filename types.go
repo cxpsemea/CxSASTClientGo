@@ -124,8 +124,12 @@ type PathResultInfo struct {
 	Line2             uint64
 	Column2           uint64
 	MethodLine2       uint64
-	QueryId           uint64
+	QueryID           uint64
+	State             string
+	Severity          string
+	PathID            uint64
 	SimilarityID      int64
+	Comment           string
 }
 
 type Preset struct {
@@ -301,6 +305,7 @@ type ScanResult struct {
 	DestinationMethod string
 	Group             string
 	Language          string
+	Comment           string
 	Nodes             []PathNode
 }
 
@@ -329,6 +334,112 @@ type ScanSettings struct {
 	PresetID               uint64  `json:"presetId"`
 	EngineConfigurationID  uint64  `json:"engineConfigurationId"`
 	ZippedSource           *[]byte `json:"zippedSource,omitempty"`
+}
+
+type ScanSettingsSOAP struct {
+	Text         string `xml:",chardata"`
+	IsSuccesfull string `xml:"IsSuccesfull"`
+	Started      struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"Started"`
+	Finished struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"Finished"`
+	RequestStarted struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"RequestStarted"`
+	RequestComplete struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"RequestComplete"`
+	ScanRisk                    string `xml:"ScanRisk"`
+	Preset                      string `xml:"Preset"`
+	Path                        string `xml:"Path"`
+	Comment                     string `xml:"Comment"`
+	LOC                         string `xml:"LOC"`
+	FilesCount                  string `xml:"FilesCount"`
+	High                        string `xml:"High"`
+	Medium                      string `xml:"Medium"`
+	Low                         string `xml:"Low"`
+	Info                        string `xml:"Info"`
+	ScanRiskSeverity            string `xml:"ScanRiskSeverity"`
+	ScanRiskQuantity            string `xml:"ScanRiskQuantity"`
+	IsIncremental               string `xml:"IsIncremental"`
+	ScanType                    string `xml:"ScanType"`
+	ScanLanguageStateCollection struct {
+		Text                   string `xml:",chardata"`
+		CxWSQueryLanguageState []struct {
+			Text              string `xml:",chardata"`
+			LanguageID        string `xml:"LanguageID"`
+			LanguageName      string `xml:"LanguageName"`
+			LanguageHash      string `xml:"LanguageHash"`
+			StateCreationDate string `xml:"StateCreationDate"`
+		} `xml:"CxWSQueryLanguageState"`
+	} `xml:"ScanLanguageStateCollection"`
+	EngineStart struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"EngineStart"`
+	EngineFinish struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"EngineFinish"`
+	ScanQueued struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"ScanQueued"`
+	TotalScanTime             string `xml:"TotalScanTime"`
+	TotalEngineTime           string `xml:"TotalEngineTime"`
+	StatisticsCalculationDate struct {
+		Text   string `xml:",chardata"`
+		Hour   string `xml:"Hour"`
+		Minute string `xml:"Minute"`
+		Second string `xml:"Second"`
+		Day    string `xml:"Day"`
+		Month  string `xml:"Month"`
+		Year   string `xml:"Year"`
+	} `xml:"StatisticsCalculationDate"`
+	ProjectName         string `xml:"ProjectName"`
+	TeamName            string `xml:"TeamName"`
+	ScanCompletedStatus string `xml:"ScanCompletedStatus"`
 }
 
 type SourceFilters struct {
