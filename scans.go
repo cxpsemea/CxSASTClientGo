@@ -13,11 +13,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c SASTClient) GetScan(scanid uint64) (Scan, error) {
-	c.depwarn("GetScan", "GetScanByID")
-	return c.GetScanByID(scanid)
-}
-
 func (c SASTClient) GetScanByID(scanid uint64) (Scan, error) {
 	c.logger.Debugf("Get SAST scan %d", scanid)
 	var scan Scan
@@ -31,10 +26,6 @@ func (c SASTClient) GetScanByID(scanid uint64) (Scan, error) {
 	return scan, err
 }
 
-func (c SASTClient) GetLastScan(projectid uint64) (Scan, error) {
-	c.depwarn("GetLastScan", "GetLastScanByID")
-	return c.GetLastScanByID(projectid)
-}
 func (c SASTClient) GetLastScanByID(projectid uint64) (Scan, error) {
 	var scans []Scan
 	response, err := c.get(fmt.Sprintf("/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid))
