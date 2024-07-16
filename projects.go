@@ -19,11 +19,6 @@ func (pr *ProjectRepo) String() string {
 	return fmt.Sprintf("%v - branch %v", pr.URL, pr.Branch)
 }
 
-func (c SASTClient) GetProject(id uint64) (Project, error) {
-	c.depwarn("GetProject", "GetProjectByID")
-	return c.GetProjectByID(id)
-}
-
 func (c SASTClient) GetProjectByID(id uint64) (Project, error) {
 	return c.GetProjectByIDV(id, "1.0")
 }
@@ -108,11 +103,6 @@ func (c SASTClient) GetProjectsByName(name string) ([]Project, error) {
 
 	return projects, err
 
-}
-
-func (c SASTClient) GetProjectsInTeam(teamid uint64) ([]Project, error) {
-	c.depwarn("GetProjectsInTeam", "GetProjectsInTeamByID")
-	return c.GetProjectsInTeamByID(teamid)
 }
 
 func (c SASTClient) GetProjectsInTeamByID(teamid uint64) ([]Project, error) {

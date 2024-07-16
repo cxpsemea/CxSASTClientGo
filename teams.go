@@ -67,11 +67,6 @@ func (c SASTClient) CreateTeam(name string, parentId uint64) (uint64, error) {
 	return newTeam, err
 }
 
-func (c SASTClient) DeleteTeam(teamId uint64) error {
-	c.depwarn("DeleteTeam", "DeleteTeamByID")
-	return c.DeleteTeamByID(teamId)
-}
-
 func (c SASTClient) DeleteTeamByID(teamId uint64) error {
 	response, err := c.sendRequest(http.MethodDelete, fmt.Sprintf("/auth/teams/%d", teamId), nil, nil)
 	if err != nil {

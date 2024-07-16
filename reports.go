@@ -10,11 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (c SASTClient) RequestNewReport(scanID uint64, reportType string) (Report, error) {
-	c.depwarn("RequestNewReport", "RequestNewReportByID")
-	return c.RequestNewReportByID(scanID, reportType)
-}
-
 func (c SASTClient) RequestNewReportByID(scanID uint64, reportType string) (Report, error) {
 	report := Report{}
 	jsonData := map[string]interface{}{
@@ -37,11 +32,6 @@ func (c SASTClient) RequestNewReportByID(scanID uint64, reportType string) (Repo
 	return report, err
 }
 
-func (c SASTClient) GetReportStatus(reportID uint64) (ReportStatusResponse, error) {
-	c.depwarn("GetReportStatus", "GetReportStatusByID")
-	return c.GetReportStatusByID(reportID)
-}
-
 func (c SASTClient) GetReportStatusByID(reportID uint64) (ReportStatusResponse, error) {
 	var response ReportStatusResponse
 
@@ -57,10 +47,6 @@ func (c SASTClient) GetReportStatusByID(reportID uint64) (ReportStatusResponse, 
 	return response, nil
 }
 
-func (c SASTClient) DownloadReport(reportID uint64) ([]byte, error) {
-	c.depwarn("DownloadReport", "DownloadReportByID")
-	return c.DownloadReportByID(reportID)
-}
 func (c SASTClient) DownloadReportByID(reportID uint64) ([]byte, error) {
 	header := http.Header{}
 	header.Set("Accept", "application/json")
@@ -72,13 +58,9 @@ func (c SASTClient) DownloadReportByID(reportID uint64) ([]byte, error) {
 }
 
 // convenience function
-func (c SASTClient) GenerateAndDownloadReport(scanID uint64, reportType string) ([]byte, error) {
-	c.depwarn("GenerateAndDownloadReport", "GenerateAndDownloadReportByID")
-	return c.GenerateAndDownloadReportByID(scanID, reportType)
-}
 func (c SASTClient) GenerateAndDownloadReportByID(scanID uint64, reportType string) ([]byte, error) {
 	var reportBytes []byte
-	report, err := c.RequestNewReport(scanID, reportType)
+	report, err := c.RequestNewReportByID(scanID, reportType)
 
 	if err != nil {
 		c.logger.Error("Error requesting report: " + err.Error())
@@ -87,7 +69,7 @@ func (c SASTClient) GenerateAndDownloadReportByID(scanID uint64, reportType stri
 
 	finalStatus := 1
 	for {
-		reportStatus, err := c.GetReportStatus(report.ReportID)
+		reportStatus, err := c.GetReportStatusByID(report.ReportID)
 		if err != nil {
 			c.logger.Error("Error generating report: " + err.Error())
 			return reportBytes, err
@@ -100,7 +82,7 @@ func (c SASTClient) GenerateAndDownloadReportByID(scanID uint64, reportType stri
 	}
 
 	if finalStatus == 2 {
-		reportBytes, err = c.DownloadReport(report.ReportID)
+		reportBytes, err = c.DownloadReportByID(report.ReportID)
 		if err != nil {
 			c.logger.Error("Error downloading report: " + err.Error())
 			return reportBytes, err
