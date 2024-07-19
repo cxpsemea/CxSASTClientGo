@@ -190,6 +190,7 @@ type Query struct {
 	IsExecutable       bool        `xml:"IsExecutable"`
 	Source             string      `xml:"Source"`
 	DescriptionID      uint64      `xml:"CxDescriptionID"`
+	Version            uint64      `xml:"QueryVersionCode"`
 	OwningGroup        *QueryGroup `json:"-"`
 	Dependencies       []uint64    `json:"-"`         // dependencies on queries outside of the inheritance hierarchy
 	CustomDependencies []uint64    `json:"-"`         // dependencies on custom queries outside of the inheritance hierarchy
