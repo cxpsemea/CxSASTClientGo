@@ -291,3 +291,8 @@ func (ct *SASTTime) UnmarshalJSON(b []byte) (err error) {
 	ct.Time, err = time.Parse(sastTimeLayout, s)
 	return
 }
+
+func (ct SASTTime) MarshalJSON() (output []byte, err error) {
+	output = []byte("\"" + ct.Format(sastTimeLayout) + "\"")
+	return
+}
