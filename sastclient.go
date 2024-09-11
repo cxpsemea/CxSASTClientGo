@@ -240,6 +240,15 @@ func NewTokenClient(client *http.Client, base_url string, username string, passw
 	return cli, nil
 }
 
+func (c SASTClient) GetCurrentRESTToken() string {
+	t, _ := c.restClient.Transport.(*oauth2.Transport).Source.Token()
+	return t.AccessToken
+}
+func (c SASTClient) GetCurrentSOAPToken() string {
+	t, _ := c.soapClient.Transport.(*oauth2.Transport).Source.Token()
+	return t.AccessToken
+}
+
 func (c SASTClient) depwarn(old, new string) {
 	if new == "" {
 		c.logger.Warnf("Cx1SASTClientGo deprecation notice: %v will be deprecated", old)
