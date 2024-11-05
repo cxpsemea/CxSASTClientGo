@@ -298,6 +298,13 @@ func (ct *SASTTime) UnmarshalJSON(b []byte) (err error) {
 		return
 	}
 	ct.Time, err = time.Parse(sastTimeLayout, s)
+	if err != nil {
+		ct.Time, err = time.Parse(time.RFC3339, s)
+		if err != nil {
+			ct.Time, err = time.Parse(time.RFC3339, s)
+		}
+	}
+
 	return
 }
 
