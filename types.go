@@ -275,10 +275,10 @@ type Scan struct {
 		SourceID   string `json:"sourceId"`
 		CxVersion  string `json:"cxVersion"`
 		Languages  []struct {
-			ID           uint64    `json:"languageID"`
-			Name         string    `json:"languageName"`
-			Hash         string    `json:"languageHash"`
-			CreationDate time.Time `json:"stateCreationDate"`
+			ID           uint64   `json:"languageID"`
+			Name         string   `json:"languageName"`
+			Hash         string   `json:"languageHash"`
+			CreationDate SASTTime `json:"stateCreationDate"`
 		} `json:"languageStateCollection"`
 	}
 	DateAndTime struct {
