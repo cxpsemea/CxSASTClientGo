@@ -206,12 +206,11 @@ func ShortenGUID(guid string) string {
 // this is useful if you are using SAST authentication on a third-party website with authorization_code style oauth
 // oauth authorization_code helper function are implemented in sastpassclient.go
 func New(client *http.Client, soap_client *http.Client, base_url string, logger *logrus.Logger) (*SASTClient, error) {
-
-	cli := &SASTClient{client, soap_client, base_url, logger, nil}
-
 	if l := len(base_url); base_url[l-1:] == "/" {
 		base_url = base_url[:l-1]
 	}
+
+	cli := &SASTClient{client, soap_client, base_url, logger, nil}
 
 	user, err := cli.GetCurrentUser()
 	if err != nil {
