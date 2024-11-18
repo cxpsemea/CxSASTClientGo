@@ -158,6 +158,10 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 		}
 	}
 
+	type postScanAction struct {
+		ID int64
+	}
+
 	var settings ProjectSettings
 
 	c.logger.Debug("Get Project Settings for project ", projectid)
@@ -169,6 +173,7 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 
 	err = json.Unmarshal(response, &responseStruct)
 	if err != nil {
+		c.logger.Infof("Got response: %v", string(response))
 		return settings, err
 	}
 
@@ -179,7 +184,13 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 	if responseStruct.PostScanAction == nil {
 		settings.PostScanAction = -1
 	} else {
-		settings.PostScanAction = responseStruct.PostScanAction.(int64)
+		if val, ok := responseStruct.PostScanAction.(int64); ok {
+			settings.PostScanAction = val
+		} else if val, ok := responseStruct.PostScanAction.(postScanAction); ok {
+			settings.PostScanAction = val.ID
+		} else {
+			c.logger.Warningf("Failed to parse post-scan-action from data: %v", responseStruct.PostScanAction)
+		}
 	}
 
 	settings.EmailNotifications.FailedScan = responseStruct.EmailNotifications.FailedScan

@@ -206,6 +206,9 @@ func ShortenGUID(guid string) string {
 // this is useful if you are using SAST authentication on a third-party website with authorization_code style oauth
 // oauth authorization_code helper function are implemented in sastpassclient.go
 func New(client *http.Client, soap_client *http.Client, base_url string, logger *logrus.Logger) (*SASTClient, error) {
+	if l := len(base_url); base_url[l-1:] == "/" {
+		base_url = base_url[:l-1]
+	}
 
 	cli := &SASTClient{client, soap_client, base_url, logger, nil}
 
@@ -223,6 +226,10 @@ func New(client *http.Client, soap_client *http.Client, base_url string, logger 
 
 // NewTokenClient will authenticate with SAST using the standard OIDC clients included in the platform
 func NewTokenClient(client *http.Client, base_url string, username string, password string, logger *logrus.Logger) (*SASTClient, error) {
+	if l := len(base_url); base_url[l-1:] == "/" {
+		base_url = base_url[:l-1]
+	}
+
 	// implemented in sastpassclient.go
 	rest_client := OauthCredentialClient(client, base_url, "resource_owner_client", "014DF517-39D1-4453-B7B3-9930C563627C", username, password, []string{"sast_rest_api", "access_control_api"})
 	if rest_client == nil {
