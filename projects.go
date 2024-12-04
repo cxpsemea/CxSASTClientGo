@@ -159,7 +159,7 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 	}
 
 	type postScanAction struct {
-		ID int64
+		ID int64 `json:"id"`
 	}
 
 	var settings ProjectSettings
@@ -186,8 +186,8 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 	} else {
 		if val, ok := responseStruct.PostScanAction.(int64); ok {
 			settings.PostScanAction = val
-		} else if val, ok := responseStruct.PostScanAction.(postScanAction); ok {
-			settings.PostScanAction = val.ID
+		} else if val, ok := responseStruct.PostScanAction.(map[string]interface{})["id"]; ok {
+			settings.PostScanAction = (int64)(val.(float64))
 		} else {
 			c.logger.Warningf("Failed to parse post-scan-action from data: %v", responseStruct.PostScanAction)
 		}
