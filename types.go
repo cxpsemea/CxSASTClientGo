@@ -166,9 +166,9 @@ type ProjectRepo struct {
 }
 
 type ProjectSettings struct {
-	ProjectID             uint64
-	PresetID              uint64
-	PresetName            string
+	ProjectID uint64
+	PresetID  uint64
+	//PresetName            string
 	EngineConfigurationID uint64
 	PostScanAction        int64
 	EmailNotifications    struct {

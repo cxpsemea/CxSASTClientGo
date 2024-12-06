@@ -158,10 +158,6 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 		}
 	}
 
-	type postScanAction struct {
-		ID int64 `json:"id"`
-	}
-
 	var settings ProjectSettings
 
 	c.logger.Debug("Get Project Settings for project ", projectid)
@@ -197,11 +193,11 @@ func (c SASTClient) GetProjectSettingsByID(projectid uint64) (ProjectSettings, e
 	settings.EmailNotifications.BeforeScan = responseStruct.EmailNotifications.BeforeScan
 	settings.EmailNotifications.AfterScan = responseStruct.EmailNotifications.AfterScan
 
-	preset, err := c.GetPresetByID(settings.PresetID)
+	/*preset, err := c.GetPresetByID(settings.PresetID)
 	if err != nil {
 		return settings, fmt.Errorf("failed to get preset for project: %s", err)
 	}
-	settings.PresetName = preset.Name
+	settings.PresetName = preset.Name */
 
 	return settings, err
 }
