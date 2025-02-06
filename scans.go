@@ -26,6 +26,22 @@ func (c SASTClient) GetScanByID(scanid uint64) (Scan, error) {
 	return scan, err
 }
 
+func (c SASTClient) GetScanSchedules() ([]ScanSchedule, error) {
+	schedules := []ScanSchedule{}
+
+	response, err := c.getV("/sast/scheduledJobs", "4.0")
+	if err != nil {
+		return schedules, err
+	}
+
+	err = json.Unmarshal(response, &schedules)
+	return schedules, err
+}
+
+func (s ScanSchedule) String() string {
+	return fmt.Sprintf("Project %v [%d]: on %v at %v", s.ProjectName, s.ProjectID, strings.Join(s.Days, ","), s.Time)
+}
+
 func (c SASTClient) GetLastScanByID(projectid uint64) (Scan, error) {
 	var scans []Scan
 	response, err := c.get(fmt.Sprintf("/sast/scans?projectId=%d&scanStatus=Finished&last=1", projectid))

@@ -325,6 +325,13 @@ type ScanResultSummary struct {
 	Information ScanResultStatusSummary
 }
 
+type ScanSchedule struct {
+	ProjectID   uint64   `json:"projectId"`
+	ProjectName string   `json:"projectName"`
+	Days        []string `json:"scanDays"`
+	Time        string   `json:"scanTime"`
+}
+
 type ScanSettings struct {
 	ProjectID              uint64  `json:"projectID"`
 	OverrideProjectSetting bool    `json:"overrideProjectSetting"`
