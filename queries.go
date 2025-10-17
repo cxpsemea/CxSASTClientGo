@@ -464,7 +464,6 @@ func (qc *QueryCollection) DetectDependencies(teamsByID *map[uint64]*Team, proje
 			qg := &qc.QueryLanguages[lid].QueryGroups[gid]
 			for qid := range qc.QueryLanguages[lid].QueryGroups[gid].Queries {
 				qq := &qc.QueryLanguages[lid].QueryGroups[gid].Queries[qid]
-
 				if !qq.IsCustom() {
 					qq.IsValid = true
 				} else {

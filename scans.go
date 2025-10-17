@@ -354,3 +354,30 @@ func (c SASTClient) GetAllPathResultInfos(scanId uint64) ([]PathResultInfo, erro
 
 	return pris, nil
 }
+
+func (c SASTClient) GetScanCustomStateUsedODATA(scanId uint64, stateId uint) (bool, error) {
+	response, err := c.sendODATARequest(fmt.Sprintf("v1/Results?$filter=ScanId%%20eq%%20%d%%20and%%20StateId%%20eq%%20%d$select=ScanId,StateId&$top=1", scanId, stateId))
+	if err != nil {
+		return false, err
+	}
+
+	type responseStruct struct {
+		Value []struct {
+			Id uint64 `json:"Id"`
+		} `json:"value"`
+	}
+
+	var rs responseStruct
+
+	err = json.Unmarshal(response, &rs)
+	if err != nil {
+		return false, err
+	}
+
+	if len(rs.Value) > 1 {
+		return true, nil
+	}
+
+	return false, nil
+
+}
